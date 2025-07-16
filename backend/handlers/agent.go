@@ -18,6 +18,45 @@ type Agent struct {
 	Password  string             `bson:"password,omitempty" json:"-"`
 	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
 }
+type AgentStatusUpdate struct{
+	AgentID string `json:"agentId"`
+	Status string `json:"status"`
+}
+
+func AgentStatusHandler(w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Acces-Control-Allow-Origin","*")
+	w.Header().Set("Acces-Control-Allow-Methods","POST,OPTIONS")
+	w.Header().Set("Acces-Control-Allow-Headers","Content-Type")
+	if r.Method != http.MethodPost{
+		http.Error(w."Only Post allowed", http.StatusMethodNotAllowed)
+		return
+	}
+}
+var upd AgentStatusUpdate
+if err := json.NewDecoder(r.Body).Decode(&upd); err != nil {
+	http.Error(w,"Invalid JSON:", http.StatusBadRequest)
+	return 
+}
+objID , err := primitive.ObjectIDFromHex(upd.AgentID)
+if err !- nil {
+	http.Error(w,"Invalid agentId",http.StatusBadRequest)
+	return 
+}
+
+ctx,cancel := context.WithTimeout(context.Background(),5*time.Second)
+defer cancel()
+_, err = utils.AgentColl.UpdateOne(
+	ctx,bson.m{"_id":objID},
+	bson.m{"$set":bson.M{"status":upd.Status}},
+)
+if err != nil {
+	http.Error(w,"DB Update Error", http.StatusInternalServerError)
+	return
+}
+w.Header().Set("Content-Type", "application/json")
+json.NewEncoder(w).Encode(map[string]string{
+	"message": "Agent status updated ",
+})
 
 func AgentRegisterHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

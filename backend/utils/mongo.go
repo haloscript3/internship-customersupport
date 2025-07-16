@@ -10,8 +10,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var Client *mongo.Client
-var MongoDB *mongo.Database
+var (
+	Client *mongo.Client 
+	MongoDB *mongo.Database
+	AgentColl  *mongo.Collection
+	SessionColl *mongo.Collection
+	MessageColl *mongo.Collection 
+)
 
 func InitMongo() error {
 	uri := os.Getenv("MONGO_URI")
@@ -24,16 +29,18 @@ func InitMongo() error {
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to MongoDB: %w",err)
 	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		return err
+	if err := client.Ping(ctx, nil); err != nil {
+		return fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
 
 	Client = client
 	MongoDB = client.Database("ChatbotAI")
+	AgentColl = MongoDB.Collection("agents")
+	SessionColl = MongoDB.Collection("sessions")
+	MessageColl = MongoDB.Collection ("messages")
+	
 	fmt.Println("✅ Connected to MongoDB")
 	return nil
 }

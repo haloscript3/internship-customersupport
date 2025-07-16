@@ -3,59 +3,97 @@ import { useState, useEffect, useRef } from 'react';
 export default function AgentChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior:'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(scrollToBottom, [messages]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const newMessage = { sender: 'agent', text: input };
-    setMessages((prev) => [...prev, newMessage]);
+    const userMsg = { sender: 'agent', text: input };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setLoading(true);
 
+    await fetch('http://localhost:8080/api/agent/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: "<agentObjectIdHex>", 
+          status: "busy"
+        }),
+      });
     try {
       const res = await fetch('http://localhost:8080/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation: [newMessage] }),
+        body: JSON.stringify({
+          conversation: [
+            ...messages,
+            userMsg
+          ]
+        }),
       });
 
-      const data = await res.json();
-      console.log('Server response:', data);
-    } catch (error) {
-      console.error('Agent API error:', error);
+      if (!res.ok) {
+        console.error('Server error:', await res.text());
+        setLoading(false);
+        return;
+      }
+
+      const { reply } = await res.json();
+
+      const aiMsg = { sender: 'ai', text: reply };
+      setMessages(prev => [...prev, aiMsg]);
+
+    } catch (err) {
+      console.error('Fetch failed:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>Agent Panel</div>
+      <h1 style={styles.header}>Agent Panel</h1>
 
       <div style={styles.chatBox}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{ ...styles.message, alignSelf: msg.sender === 'agent' ? 'flex-end' : 'flex-start', backgroundColor: msg.sender === 'agent' ? '#076effff' : '#dee2e6' }}>
-            <span>{msg.text}</span>
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            style={{
+              ...styles.msg,
+              alignSelf: m.sender === 'agent' ? 'flex-end' : 'flex-start',
+              backgroundColor: m.sender === 'agent' ? '#b6d4fe' : '#e2e3e5',
+              color: m.sender === 'agent' ? '#000' : '#000',
+            }}
+          >
+            {m.text}
           </div>
         ))}
-        <div ref={messagesEndRef} />
+        {loading && (
+          <div style={{ fontStyle: 'italic', color: '#666', margin: '0.5rem' }}>
+            AI cevap yazıyor...
+          </div>
+        )}
+        <div ref={endRef} />
       </div>
+
       <div style={styles.inputArea}>
         <input
           style={styles.input}
-          type="text"
-          placeholder="Yanıt yaz..."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          placeholder="Yazıp Enter’a basın…"
         />
-        <button style={styles.button} onClick={sendMessage}>Yanıtla</button>
+        <button style={styles.btn} onClick={sendMessage} disabled={loading}>
+          Gönder
+        </button>
       </div>
     </div>
   );
@@ -63,62 +101,32 @@ export default function AgentChat() {
 
 const styles = {
   container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    backgroundColor: '#000306ff',
-    color: '#212529',
-    padding: '1rem',
-    fontFamily: 'Inter',
+    display: 'flex', flexDirection: 'column', height: '100vh',
+    padding: '1rem', background: '#f8f9fa', fontFamily: 'sans-serif'
   },
-  header: {
-    fontFamily: 'Inter',
-    fontSize: '1.5rem',
-    marginBottom: '1rem',
-    textAlign: 'center',
-    color: '#ffffffff',
+  header: { 
+    textAlign: 'center', marginBottom: '1rem', color: '#0d6efd'
   },
   chatBox: {
-    fontFamily: 'Inter',
-    flex: 1,
-    overflowY: 'auto',
-    padding: '1rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    border: '1px solid #ffffffff',
-    borderRadius: '8px',
-    backgroundColor: '#000000ff',
+    flex: 1, display: 'flex', flexDirection: 'column',
+    padding: '1rem', gap: '0.5rem',
+    border: '1px solid #ced4da', borderRadius: 8,
+    overflowY: 'auto', background: '#fff'
   },
-  message: {
-    maxWidth: '60%',
-    padding: '0.5rem 1rem',
-    borderRadius: '8px',
-    color: '#ffffff',
-    fontFamily: 'Inter',
+  msg: {
+    padding: '0.5rem 1rem', borderRadius: 8, maxWidth: '70%',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
   },
   inputArea: {
-    display: 'flex',
-    marginTop: '1rem',
-    gap: '0.5rem',
-    fontFamily: 'Inter',
+    display: 'flex', gap: '0.5rem', marginTop: '1rem'
   },
   input: {
-    flex: 1,
-    padding: '0.75rem',
-    borderRadius: '8px',
-    border: '1px solid #ced4da',
-    fontSize: '1rem',
-    fontFamily: 'Inter',
+    flex: 1, padding: '0.75rem', borderRadius: 4,
+    border: '1px solid #ced4da', fontSize: '1rem'
   },
-  button: {
-    padding: '0.75rem 1rem',
-    borderRadius: '8px',
-    backgroundColor: '#ffffffff',
-    color: '#000',
-    border: 'none',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-     fontFamily: 'Inter',
-  },
+  btn: {
+    padding: '0.75rem 1rem', borderRadius: 4,
+    border: 'none', background: '#0d6efd', color: '#fff',
+    cursor: 'pointer'
+  }
 };
