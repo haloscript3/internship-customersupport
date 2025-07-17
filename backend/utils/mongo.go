@@ -15,7 +15,7 @@ var (
 	MongoDB *mongo.Database
 	AgentColl  *mongo.Collection
 	SessionColl *mongo.Collection
-	MessageColl *mongo.Collection 
+	MessageColl *mongo.Collection
 )
 
 func InitMongo() error {
@@ -39,7 +39,7 @@ func InitMongo() error {
 	MongoDB = client.Database("ChatbotAI")
 	AgentColl = MongoDB.Collection("agents")
 	SessionColl = MongoDB.Collection("sessions")
-	MessageColl = MongoDB.Collection ("messages")
+	MessageColl = MongoDB.Collection("messages")
 	
 	fmt.Println("✅ Connected to MongoDB")
 	return nil

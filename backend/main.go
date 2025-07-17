@@ -25,7 +25,8 @@ func main() {
 	http.HandleFunc("/api/agent/send", handlers.SendHandler)
 	http.HandleFunc("/api/agent/register", handlers.AgentRegisterHandler)
 	http.HandleFunc("/api/agent/login",    handlers.AgentLoginHandler)
-	http.HandleFunc("/api/agent/status",handles.AgentStatusHandler)
+	http.HandleFunc("/api/agent/status",handlers.AgentStatusHandler.Method("POST"))
+	http.HandleFunc("/api/session/start", handlers.StartSessionHandler.Method("POST"))
 	fmt.Println("Server is running on http://localhost:8080")
 
 	log.Fatal(http.ListenAndServe(":8080", nil))

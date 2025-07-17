@@ -14,12 +14,11 @@ type Agent struct{
 }
 
 type Session struct {
-    ID         primitive.ObjectID  `bson:"_id,omitempty"`
-    UserID     *primitive.ObjectID `bson:"userId,omitempty"`
-    AgentID    *primitive.ObjectID `bson:"agentId,omitempty"`
-    AIFallback bool                `bson:"aiFallback"`
-    CreatedAt  time.Time           `bson:"createdAt"`
-    UpdatedAt  time.Time           `bson:"updatedAt"`
+    ID             primitive.ObjectID `bson:"_id,omitempty" json:"sessionId"`
+    UserID         string             `bson:"userId"          json:"userId"`
+    AssignedAgent  string             `bson:"assignedAgent"   json:"assignedAgent"`
+    Mode           string             `bson:"mode"            json:"mode"` 
+    CreatedAt      time.Time          `bson:"createdAt"       json:"createdAt"`
 }
 
 type Message struct {
