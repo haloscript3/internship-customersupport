@@ -84,7 +84,7 @@ frontend/
 ### 1. Environment Variables
 Create a `.env` file in the backend directory:
 ```env
-MONGO_URI=mongodb://localhost:27017/ChatbotAI
+MONGO_URI=YOUR_MONGODB_CLUSTER_KEY
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
@@ -203,7 +203,7 @@ type Agent struct {
 }
 ```
 
-## 🔄 System Flow
+##  System Flow
 
 1. **Customer initiates chat** → System checks for available agents
 2. **Agent available** → Creates human session, sets agent to "busy"
@@ -212,7 +212,7 @@ type Agent struct {
 5. **Message persistence** → All messages stored in MongoDB
 6. **Session completion** → Agent status returns to "available"
 
-## 🚀 Deployment Considerations
+## Deployment Considerations
 
 ### Production Setup
 - Use environment variables for all sensitive data
@@ -227,7 +227,7 @@ type Agent struct {
 - Load balancing for WebSocket connections
 - Redis for session management in distributed systems
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -235,7 +235,7 @@ type Agent struct {
 4. Push to the branch
 5. Create a Pull Request
 
-## 📝 License
+##  License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
