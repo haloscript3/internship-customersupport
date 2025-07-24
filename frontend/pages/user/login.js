@@ -15,13 +15,46 @@ export default function UserLogin() {
       const res = await fetch('http://localhost:8080/api/user/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({form}),
+        body: JSON.stringify(form),
       });
 
       const data = await res.json();
       if (res.ok) {
-        alert('Successful login! Redirecting to chat page.');
-        window.location.href = '/user/chat'; 
+        const userId = form.email;
+        const agentId = localStorage.getItem('agentId');
+        let sessionId = null;
+        if (agentId) {
+          const sessionRes = await fetch('http://localhost:8080/api/session/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, agentId }),
+          });
+          const sessionData = await sessionRes.json();
+          if (sessionRes.ok && sessionData.sessionId) {
+            sessionId = sessionData.sessionId;
+          } else {
+            alert('Session başlatılamadı.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          const sessionRes = await fetch('http://localhost:8080/api/session/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+          });
+          const sessionData = await sessionRes.json();
+          if (sessionRes.ok && sessionData.sessionId) {
+            sessionId = sessionData.sessionId;
+          } else {
+            alert('Session başlatılamadı.');
+            setLoading(false);
+            return;
+          }
+        }
+        localStorage.setItem('sessionId', sessionId);
+        localStorage.setItem('userId', userId);
+        window.location.href = '/user/chat';
       } else {
         alert(data.error || 'Hatalı giriş.');
       }
@@ -45,7 +78,6 @@ export default function UserLogin() {
           onChange={handleChange}
           required
           style={{ width: '100%', padding: 10, marginBottom: 10 ,fontFamily: 'Inter',}}
-          
         />
         <input
           name="password"

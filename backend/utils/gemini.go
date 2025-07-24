@@ -34,7 +34,7 @@ func AskGemini(message string) (string, error) {
 		return "", errors.New("API key not found in environment")
 	}
 
-	fmt.Println("🔑 API Key:", apiKey)
+	fmt.Println(" API Key:", apiKey)
 
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 

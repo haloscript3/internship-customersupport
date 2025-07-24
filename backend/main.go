@@ -7,7 +7,8 @@ import (
   "github.com/joho/godotenv"
   "backend/handlers"
   "backend/utils"
-
+  "backend/websocket"
+  "github.com/gorilla/mux"
 )
 
 func main() {
@@ -17,18 +18,22 @@ func main() {
 	if err := utils.InitMongo(); err != nil {
 		log.Fatalf("Mongo init failed: %v", err)
 	}
-	
-	utils.InitMongo()
-	http.HandleFunc("/api/chat", handlers.ChatHandler)
-	http.HandleFunc("/api/user/register", handlers.UserRegisterHandler)
-	http.HandleFunc("/api/user/login", handlers.UserLoginHandler)
-	http.HandleFunc("/api/agent/send", handlers.SendHandler)
-	http.HandleFunc("/api/agent/register", handlers.AgentRegisterHandler)
-	http.HandleFunc("/api/agent/login",    handlers.AgentLoginHandler)
-	http.HandleFunc("/api/agent/status",handlers.AgentStatusHandler.Method("POST"))
-	http.HandleFunc("/api/session/start", handlers.StartSessionHandler.Method("POST"))
+
+	router := mux.NewRouter()
+	router.HandleFunc("/api/chat", handlers.ChatHandler)
+	router.HandleFunc("/api/user/register", handlers.UserRegisterHandler)
+	router.HandleFunc("/api/user/login", handlers.UserLoginHandler)
+	router.HandleFunc("/api/agent/send", handlers.SendHandler)
+	router.HandleFunc("/api/agent/register", handlers.AgentRegisterHandler)
+	router.HandleFunc("/api/agent/login", handlers.AgentLoginHandler)
+	router.HandleFunc("/api/agent/status", handlers.AgentStatusHandler)
+	router.HandleFunc("/api/session/start", handlers.StartSessionHandler)
+	router.HandleFunc("/api/session/messages", handlers.SessionMessagesGetHandler)
+	router.HandleFunc("/api/session/info", handlers.GetSessionInfoHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/session/agent/{agentId}", handlers.GetAgentSessionsHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/ws", websocket.HandleWebSocket)
 	fmt.Println("Server is running on http://localhost:8080")
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
 

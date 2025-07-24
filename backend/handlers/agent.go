@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -17,6 +18,7 @@ type Agent struct {
 	Name      string             `bson:"name" json:"name"`
 	Email     string             `bson:"email" json:"email"`
 	Password  string             `bson:"password,omitempty" json:"-"`
+	Status	  string				`bson:"status" json:"status"`
 	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
@@ -156,13 +158,24 @@ func AgentLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Println("[AGENT LOGIN] Agent", agent.ID.Hex(), "login öncesi status:", agent.Status)
+
 	if bcrypt.CompareHashAndPassword([]byte(agent.Password), []byte(creds.Password)) != nil {
 		http.Error(w, "Geçersiz kimlik bilgileri", http.StatusUnauthorized)
 		return
 	}
 
+	update := bson.M{"$set": bson.M{"status": "available"}}
+	_, err := coll.UpdateOne(ctx, bson.M{"_id": agent.ID}, update)
+	if err != nil {
+		log.Println("[AGENT LOGIN][ERROR] Status güncellenemedi:", err)
+	} else {
+		log.Println("[AGENT LOGIN][OK] Agent", agent.ID.Hex(), "status set to available (login sonrası)")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Agent girişi başarılı",
+		"agentId": agent.ID.Hex(),
 	})
 }

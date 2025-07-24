@@ -1,51 +1,53 @@
 import { useEffect, useRef, useState } from 'react';
+import useChatWebSocket from '../../useChatWebSocket';
 
 export default function UserChat() {
-  const [messages, setMessages] = useState([
-    { sender: 'bot', text: 'Merhaba! Size nasıl yardımcı olabilirim?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [mode, setMode] = useState(null);
   const chatRef = useRef(null);
+  const [input, setInput] = useState('');
 
-  const scrollToBottom = () => {
+  useEffect(() => {
+    setSessionId(localStorage.getItem('sessionId'));
+    setUserId(localStorage.getItem('userId'));
+    console.log('UserChat userId:', localStorage.getItem('userId'));
+  }, []);
+
+  useEffect(() => {
+    if (sessionId) {
+      fetch('http://localhost:8080/api/session/messages?sessionId=' + sessionId)
+        .then(res => res.json())
+        .then(messages => {
+          // ...
+        });
+      fetch('http://localhost:8080/api/session/info?sessionId=' + sessionId)
+        .then(res => res.json())
+        .then(data => {
+          setMode(data.mode);
+        });
+    }
+  }, [sessionId]);
+
+  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, userId, 'user');
+
+  useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
-  };
-
-  useEffect(() => {
-    scrollToBottom();
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  if (!sessionId || !userId) {
+    return <div>Lütfen önce giriş yapın.</div>;
+  }
 
-    const newUserMessage = { sender: 'user', text: input };
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
+  const handleSend = () => {
+    sendMessage(input);
     setInput('');
-    setLoading(true);
-
-    try {
-      const res = await fetch('http://localhost:8080/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation: updatedMessages })
-      });
-
-      const data = await res.json();
-      setMessages(prev => [...prev, { sender: 'bot', text: data.reply }]);
-    } catch (err) {
-      console.error(err);
-      setMessages(prev => [...prev, { sender: 'bot', text: 'Bir hata oluştu.' }]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') sendMessage();
+    if (e.key === 'Enter') handleSend();
   };
 
   return (
@@ -65,7 +67,8 @@ export default function UserChat() {
       }}>
          AI Destekli Müşteri Hizmetleri
       </header>
-
+      {mode === 'human' && <div style={{padding: '10px', background: '#d1e7dd', color: '#222'}}>Bir müşteri temsilcisine bağlandınız.</div>}
+      {mode === 'ai' && <div style={{padding: '10px', background: '#ffeeba', color: '#222'}}>AI ile görüşüyorsunuz.</div>}
       <div
         ref={chatRef}
         style={{
@@ -95,14 +98,7 @@ export default function UserChat() {
             </div>
           </div>
         ))}
-
-        {loading && (
-          <div style={{ fontStyle: 'italic', color: '#999', fontSize: '14px' }}>
-            AI Typing...
-          </div>
-        )}
       </div>
-
       <div style={{
         display: 'flex',
         padding: '15px 20px',
@@ -124,7 +120,7 @@ export default function UserChat() {
           }}
         />
         <button
-          onClick={sendMessage}
+          onClick={handleSend}
           style={{
             marginLeft: '10px',
             padding: '10px 20px',

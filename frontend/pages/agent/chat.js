@@ -1,66 +1,50 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import useChatWebSocket from '../../useChatWebSocket';
 
 export default function AgentChat() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [agentId, setAgentId] = useState(null);
   const endRef = useRef(null);
+  const [input, setInput] = useState('');
+  const [debug, setDebug] = useState('');
 
-  const scrollToBottom = () => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-  useEffect(scrollToBottom, [messages]);
-
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMsg = { sender: 'agent', text: input };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-
-    await fetch('http://localhost:8080/api/agent/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId: "<agentObjectIdHex>", 
-          status: "busy"
-        }),
-      });
-    try {
-      const res = await fetch('http://localhost:8080/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation: [
-            ...messages,
-            userMsg
-          ]
-        }),
-      });
-
-      if (!res.ok) {
-        console.error('Server error:', await res.text());
-        setLoading(false);
-        return;
-      }
-
-      const { reply } = await res.json();
-
-      const aiMsg = { sender: 'ai', text: reply };
-      setMessages(prev => [...prev, aiMsg]);
-
-    } catch (err) {
-      console.error('Fetch failed:', err);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const agentId = localStorage.getItem('agentId');
+    setAgentId(agentId);
+    setDebug('agentId: ' + agentId);
+    // Agent'a atanmış session'ları çek
+    if (agentId) {
+      fetch('http://localhost:8080/api/session/agent/' + agentId)
+        .then(res => res.json())
+        .then(data => {
+          setDebug(d => d + '\nsessions: ' + JSON.stringify(data.sessions));
+          if (data.sessions && data.sessions.length > 0) {
+            setSessionId(data.sessions[0].sessionId);
+          } else {
+            setDebug(d => d + '\nNo session assigned to this agent.');
+          }
+        });
     }
+  }, []);
+
+  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, agentId, 'agent');
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  if (!sessionId || !agentId) {
+    return <div>Lütfen önce giriş yapın ve bir müşteriyle eşleşin.<br/><pre>{debug}</pre></div>;
+  }
+
+  const handleSend = () => {
+    sendMessage(input);
+    setInput('');
   };
 
   return (
     <div style={styles.container}>
       <h1 style={styles.header}>Agent Panel</h1>
-
       <div style={styles.chatBox}>
         {messages.map((m, i) => (
           <div
@@ -69,32 +53,27 @@ export default function AgentChat() {
               ...styles.msg,
               alignSelf: m.sender === 'agent' ? 'flex-end' : 'flex-start',
               backgroundColor: m.sender === 'agent' ? '#b6d4fe' : '#e2e3e5',
-              color: m.sender === 'agent' ? '#000' : '#000',
+              color: '#000',
             }}
           >
             {m.text}
           </div>
         ))}
-        {loading && (
-          <div style={{ fontStyle: 'italic', color: '#666', margin: '0.5rem' }}>
-            AI cevap yazıyor...
-          </div>
-        )}
         <div ref={endRef} />
       </div>
-
       <div style={styles.inputArea}>
         <input
           style={styles.input}
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder="Yazıp Enter’a basın…"
         />
-        <button style={styles.btn} onClick={sendMessage} disabled={loading}>
+        <button style={styles.btn} onClick={handleSend}>
           Gönder
         </button>
       </div>
+      <pre>{debug}</pre>
     </div>
   );
 }

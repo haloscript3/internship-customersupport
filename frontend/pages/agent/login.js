@@ -18,7 +18,8 @@ export default function AgentLogin() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert('Agent girişi başarılı! Sohbet paneline yönlendiriliyorsunuz.');
+        const agentId = data.agentId;
+        localStorage.setItem('agentId', agentId);
         window.location.href = '/agent/chat';
       } else {
         alert(data.error || 'Giriş bilgileri hatalı.');

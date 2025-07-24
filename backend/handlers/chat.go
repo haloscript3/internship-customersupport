@@ -95,9 +95,9 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[3] MongoDB InsertOne başlıyor")
 	coll := utils.MongoDB.Collection("messages")
 	if res, err := coll.InsertOne(context.Background(), record); err != nil {
-		fmt.Println("❌ MongoDB error:", err)
+		fmt.Println(" MongoDB error:", err)
 	} else {
-		fmt.Println("✅ Konuşma kaydedildi:", res.InsertedID)
+		fmt.Println("Konuşma kaydedildi:", res.InsertedID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
