@@ -56,6 +56,24 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	if agentID != "" {
 		agentConns[agentID] = conn
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "ai"}, bson.M{"$set": bson.M{"mode": "human"}})
+		sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentID, "mode": "human"})
+		for sessions.Next(ctx) {
+			var s models.Session
+			if err := sessions.Decode(&s); err == nil {
+				userConn := GetUserConn(s.UserID)
+				if userConn != nil {
+					out := map[string]string{
+						"sender": "system",
+						"mode":   "human",
+					}
+					jsonData, _ := json.Marshal(out)
+					userConn.WriteMessage(websocket.TextMessage, jsonData)
+				}
+			}
+		}
 	}
 	defer func() {
 		if userID != "" {
@@ -63,6 +81,28 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		if agentID != "" {
 			delete(agentConns, agentID)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			agentObjId, err := primitive.ObjectIDFromHex(agentID)
+			if err == nil {
+				utils.AgentColl.UpdateOne(ctx, bson.M{"_id": agentObjId}, bson.M{"$set": bson.M{"status": "available"}})
+			}
+			utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "human"}, bson.M{"$set": bson.M{"mode": "ai"}})
+			sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentID, "mode": "ai"})
+			for sessions.Next(ctx) {
+				var s models.Session
+				if err := sessions.Decode(&s); err == nil {
+					userConn := GetUserConn(s.UserID)
+					if userConn != nil {
+						out := map[string]string{
+							"sender": "system",
+							"mode":   "ai",
+						}
+						jsonData, _ := json.Marshal(out)
+						userConn.WriteMessage(websocket.TextMessage, jsonData)
+					}
+				}
+			}
 		}
 		conn.Close()
 	}()
@@ -96,7 +136,6 @@ func HandleWebSocketMessage(messageData []byte) {
 		return
 	}
 
-	// Mesajı kaydet
 	msg := models.Message{
 		SessionID: sessionID,
 		Sender:    incoming.Sender,
@@ -114,7 +153,6 @@ func HandleWebSocketMessage(messageData []byte) {
 			log.Println("AI error:", err)
 			return
 		}
-		// AI cevabını da kaydet
 		aiMsg := models.Message{
 			SessionID: sessionID,
 			Sender:    "ai",

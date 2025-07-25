@@ -7,6 +7,8 @@ export default function UserChat() {
   const [mode, setMode] = useState(null);
   const chatRef = useRef(null);
   const [input, setInput] = useState('');
+  const [wsRef, setWsRef] = useState(null);
+
 
   useEffect(() => {
     setSessionId(localStorage.getItem('sessionId'));
@@ -15,21 +17,27 @@ export default function UserChat() {
   }, []);
 
   useEffect(() => {
-    if (sessionId) {
-      fetch('http://localhost:8080/api/session/messages?sessionId=' + sessionId)
-        .then(res => res.json())
-        .then(messages => {
-          // ...
-        });
-      fetch('http://localhost:8080/api/session/info?sessionId=' + sessionId)
-        .then(res => res.json())
-        .then(data => {
-          setMode(data.mode);
-        });
-    }
-  }, [sessionId]);
+    if (!sessionId || !userId) return;
+    fetch('http://localhost:8080/api/session/info?sessionId=' + sessionId)
+      .then(res => res.json())
+      .then(data => {
+        setMode(data.mode);
+      });
+    const ws = new window.WebSocket(`ws://localhost:8080/ws?sessionId=${sessionId}&userId=${userId}`);
+    setWsRef(ws);
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      console.log('WS message:', msg);
+      if (msg.sender === 'system' && msg.mode) {
+        setMode(msg.mode);
+        return;
+      }
+      setMessages((prev) => [...prev, { sender: msg.sender, text: msg.message }]);
+    };
+    return () => ws && ws.close();
+  }, [sessionId, userId]);
 
-  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, userId, 'user');
+  const [messages, setMessages] = useState([]);
 
   useEffect(() => {
     if (chatRef.current) {
@@ -42,7 +50,14 @@ export default function UserChat() {
   }
 
   const handleSend = () => {
-    sendMessage(input);
+    if (!input.trim() || !wsRef) return;
+    const msg = {
+      sessionId,
+      sender: 'user',
+      message: input,
+    };
+    wsRef.send(JSON.stringify(msg));
+    setMessages((prev) => [...prev, { sender: 'user', text: input }]);
     setInput('');
   };
 
