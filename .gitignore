@@ -30,6 +30,11 @@ yarn-error.log*
 .env*
 backend/.env
 
+# MongoDB installation files
+backend/mongodb-*
+backend/*.tgz
+backend/mongodb-macos-*
+backend/mongodb-macos-aarch64-*
 
 .vercel
 *.tsbuildinfo
