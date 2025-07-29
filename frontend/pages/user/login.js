@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import styles from '../../styles/ModernUI.module.css';
 
 export default function UserLogin() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -67,31 +68,51 @@ export default function UserLogin() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: '50px auto', padding: 20 }}>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          name="email"
-          type="email"
-          placeholder="E-posta"
-          value={form.email}
-          onChange={handleChange}
-          required
-          style={{ width: '100%', padding: 10, marginBottom: 10 ,fontFamily: 'Inter',}}
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="password"
-          value={form.password}
-          onChange={handleChange}
-          required
-          style={{ width: '100%', padding: 10, marginBottom: 10 }}
-        />
-        <button type="submit" disabled={loading} style={{ padding: 10, width: '100%' ,fontFamily: 'Inter',}}>
-          {loading ? 'Logging in' : 'Giriş Yap'}
-        </button>
-      </form>
+    <div className={styles.container}>
+      <div className={styles.card}>
+        <div className={styles.logo}>
+          <h1>Hoş Geldiniz</h1>
+          <p>Müşteri hizmetleri sistemine giriş yapın</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.inputGroup}>
+            <input
+              name="email"
+              type="email"
+              placeholder="E-posta adresiniz"
+              value={form.email}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <div className={styles.inputGroup}>
+            <input
+              name="password"
+              type="password"
+              placeholder="Şifreniz"
+              value={form.password}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className={styles.button}
+          >
+            {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+          </button>
+        </form>
+        
+        <div className={styles.link}>
+          Hesabınız yok mu? <a href="/user/register">Kayıt olun</a>
+        </div>
+      </div>
     </div>
   );
 }

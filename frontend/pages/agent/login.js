@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import styles from '../../styles/ModernUI.module.css';
 
 export default function AgentLogin() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -33,72 +34,51 @@ export default function AgentLogin() {
   };
 
   return (
-    <div style={styles.container}>
-      <h2 style={styles.title}>Agent Giriş</h2>
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <input
-          name="email"
-          type="email"
-          placeholder="E-posta"
-          value={form.email}
-          onChange={handleChange}
-          required
-          style={styles.input}
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="Şifre"
-          value={form.password}
-          onChange={handleChange}
-          required
-          style={styles.input}
-        />
-        <button type="submit" disabled={loading} style={styles.button}>
-          {loading ? 'Logging in' : 'Log in'}
-        </button>
-      </form>
+    <div className={styles.container}>
+      <div className={styles.card}>
+        <div className={styles.logo}>
+          <h1>Agent Girişi</h1>
+          <p>Müşteri temsilcisi paneli</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.inputGroup}>
+            <input
+              name="email"
+              type="email"
+              placeholder="E-posta adresiniz"
+              value={form.email}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <div className={styles.inputGroup}>
+            <input
+              name="password"
+              type="password"
+              placeholder="Şifreniz"
+              value={form.password}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className={styles.button}
+          >
+            {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+          </button>
+        </form>
+        
+        <div className={styles.link}>
+          Hesabınız yok mu? <a href="/agent/register">Kayıt olun</a>
+        </div>
+      </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    maxWidth: 400,
-    margin: '80px auto',
-    padding: '2rem',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-    fontFamily: 'Inter',
-  },
-  title: {
-    textAlign: 'center',
-    marginBottom: '1.5rem',
-    color: '#0d6efd',
-    fontFamily: 'Inter',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-    fontFamily: 'Inter',
-  },
-  input: {
-    padding: '0.75rem',
-    borderRadius: 4,
-    border: '1px solid #ced4da',
-    fontSize: '1rem',
-    fontFamily: 'Inter',
-  },
-  button: {
-    padding: '0.75rem',
-    borderRadius: 4,
-    border: 'none',
-    backgroundColor: '#0d6efd',
-    color: '#fff',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    fontFamily: 'Inter',
-  },
-};

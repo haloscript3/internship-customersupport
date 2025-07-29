@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import styles from '../../styles/ModernUI.module.css';
 
 export default function UserRegister() {
   const [form, setForm] = useState({
@@ -29,7 +30,7 @@ export default function UserRegister() {
       const data = await res.json();
       if (res.ok) {
         alert('Kayıt başarılı! Giriş sayfasına yönlendiriliyorsunuz.');
-        window.location.href = '/user/login'; // ileride router.push() yapma ihtimalim var
+        window.location.href = '/user/login';
       } else {
         alert(data.error || 'Bir hata oluştu.');
       }
@@ -43,39 +44,62 @@ export default function UserRegister() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: '50px auto', padding: 20 }}>
-      <h2>Kullanıcı Kayıt</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          name="name"
-          placeholder="Ad Soyad"
-          value={form.name}
-          onChange={handleChange}
-          required
-          style={{ width: '100%', padding: 10, marginBottom: 10 }}
-        />
-        <input
-          name="email"
-          type="email"
-          placeholder="E-posta"
-          value={form.email}
-          onChange={handleChange}
-          required
-          style={{ width: '100%', padding: 10, marginBottom: 10 }}
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="Şifre"
-          value={form.password}
-          onChange={handleChange}
-          required
-          style={{ width: '100%', padding: 10, marginBottom: 10 }}
-        />
-        <button type="submit" disabled={loading} style={{ padding: 10, width: '100%' }}>
-          {loading ? 'Kaydediliyor...' : 'Kayıt Ol'}
-        </button>
-      </form>
+    <div className={styles.container}>
+      <div className={styles.card}>
+        <div className={styles.logo}>
+          <h1>Hesap Oluştur</h1>
+          <p>Müşteri hizmetleri sistemine kayıt olun</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.inputGroup}>
+            <input
+              name="name"
+              placeholder="Ad Soyad"
+              value={form.name}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <div className={styles.inputGroup}>
+            <input
+              name="email"
+              type="email"
+              placeholder="E-posta adresiniz"
+              value={form.email}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <div className={styles.inputGroup}>
+            <input
+              name="password"
+              type="password"
+              placeholder="Şifreniz"
+              value={form.password}
+              onChange={handleChange}
+              required
+              className={styles.input}
+            />
+          </div>
+          
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className={styles.button}
+          >
+            {loading ? 'Kaydediliyor...' : 'Kayıt Ol'}
+          </button>
+        </form>
+        
+        <div className={styles.link}>
+          Zaten hesabınız var mı? <a href="/user/login">Giriş yapın</a>
+        </div>
+      </div>
     </div>
   );
 }
