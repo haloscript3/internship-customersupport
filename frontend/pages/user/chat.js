@@ -6,6 +6,8 @@ export default function UserChat() {
   const [sessionId, setSessionId] = useState(null);
   const [userId, setUserId] = useState(null);
   const [mode, setMode] = useState(null);
+  const [sessionStatus, setSessionStatus] = useState(null);
+  const [assignedAgent, setAssignedAgent] = useState(null);
   const chatRef = useRef(null);
   const [input, setInput] = useState('');
   const [wsRef, setWsRef] = useState(null);
@@ -18,22 +20,56 @@ export default function UserChat() {
 
   useEffect(() => {
     if (!sessionId || !userId) return;
+    
     fetch('http://localhost:8080/api/session/info?sessionId=' + sessionId)
       .then(res => res.json())
       .then(data => {
         setMode(data.mode);
+        setAssignedAgent(data.assignedAgent);
+        setSessionStatus('active');
+      })
+      .catch(err => {
+        console.error('Session info error:', err);
+        setSessionStatus('error');
       });
+
     const ws = new window.WebSocket(`ws://localhost:8080/ws?sessionId=${sessionId}&userId=${userId}`);
     setWsRef(ws);
+    
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       console.log('WS message:', msg);
-      if (msg.sender === 'system' && msg.mode) {
-        setMode(msg.mode);
+      
+      if (msg.sender === 'system') {
+        if (msg.mode) {
+          setMode(msg.mode);
+        }
+        if (msg.status) {
+          setSessionStatus(msg.status);
+        }
+        if (msg.assignedAgent) {
+          setAssignedAgent(msg.assignedAgent);
+        }
         return;
       }
+      
       setMessages((prev) => [...prev, { sender: msg.sender, text: msg.message }]);
     };
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setSessionStatus('error');
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setSessionStatus('disconnected');
+    };
+
     return () => ws && ws.close();
   }, [sessionId, userId]);
 
@@ -77,23 +113,61 @@ export default function UserChat() {
     if (e.key === 'Enter') handleSend();
   };
 
+  const getStatusMessage = () => {
+    if (sessionStatus === 'error') return 'Bağlantı hatası';
+    if (sessionStatus === 'disconnected') return 'Bağlantı kesildi';
+    if (mode === 'system') return 'Sistem Asistanı ile görüşüyorsunuz';
+    if (mode === 'human') return 'Müşteri Temsilcisi ile görüşüyorsunuz';
+    return 'Bağlanıyor...';
+  };
+
+  const getStatusBadgeClass = () => {
+    if (sessionStatus === 'error' || sessionStatus === 'disconnected') {
+      return `${styles.statusBadge} ${styles.statusError}`;
+    }
+    if (mode === 'human') {
+      return `${styles.statusBadge} ${styles.statusHuman}`;
+    }
+    if (mode === 'system') {
+      return `${styles.statusBadge} ${styles.statusAI}`;
+    }
+    return `${styles.statusBadge} ${styles.statusConnecting}`;
+  };
+
   return (
     <div className={styles.chatContainer}>
       <header className={styles.chatHeader}>
-        <h1>Customer Service Chat</h1>
-        {mode === 'human' && (
-          <div className={`${styles.statusBadge} ${styles.statusHuman}`}>
-            Müşteri Temsilcisi
+        <div className={styles.headerLeft}>
+          <h1>Customer Service Chat</h1>
+          <div className={styles.sessionInfo}>
+            <span>Session: {sessionId?.substring(0, 8)}...</span>
+            {assignedAgent && assignedAgent !== 'System' && (
+              <span>Agent: {assignedAgent.substring(0, 8)}...</span>
+            )}
           </div>
-        )}
-        {mode === 'ai' && (
-          <div className={`${styles.statusBadge} ${styles.statusAI}`}>
-            AI Asistan
+        </div>
+        <div className={styles.headerRight}>
+          <div className={getStatusBadgeClass()}>
+            {getStatusMessage()}
           </div>
-        )}
+        </div>
       </header>
       
       <div ref={chatRef} className={styles.chatMessages}>
+        {messages.length === 0 && (
+          <div className={styles.welcomeMessage}>
+            <div className={styles.welcomeBubble}>
+              <h3>Hoş Geldiniz! 👋</h3>
+              <p>Size nasıl yardımcı olabilirim?</p>
+              {mode === 'system' && (
+                <div className={styles.aiNote}>
+                  <small>🤖 Sistem Asistanı ile görüşüyorsunuz. Uygun bir müşteri temsilcisi bulunduğunda otomatik olarak transfer edileceksiniz.</small>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         {messages.map((msg, idx) => (
           <div 
             key={idx} 
@@ -118,10 +192,11 @@ export default function UserChat() {
           onKeyDown={handleKeyDown}
           placeholder="Mesajınızı yazın..."
           className={styles.input}
+          disabled={sessionStatus === 'error' || sessionStatus === 'disconnected'}
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!input.trim() || sessionStatus === 'error' || sessionStatus === 'disconnected'}
           className={styles.sendButton}
         >
           Gönder

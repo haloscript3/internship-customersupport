@@ -5,24 +5,44 @@ import styles from '../../styles/ModernUI.module.css';
 export default function AgentChat() {
   const [sessionId, setSessionId] = useState(null);
   const [agentId, setAgentId] = useState(null);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [systemSessions, setSystemSessions] = useState([]);
+  const [activeSessions, setActiveSessions] = useState([]);
   const endRef = useRef(null);
   const [input, setInput] = useState('');
   const [debug, setDebug] = useState('');
+  const [isAvailable, setIsAvailable] = useState(true);
 
   useEffect(() => {
     const agentId = localStorage.getItem('agentId');
     setAgentId(agentId);
     setDebug('agentId: ' + agentId);
+    
     if (agentId) {
-      fetch('http://localhost:8080/api/session/agent/' + agentId)
+      fetch(`http://localhost:8080/api/agent/active-sessions/${agentId}`)
         .then(res => res.json())
         .then(data => {
-          setDebug(d => d + '\nsessions: ' + JSON.stringify(data.sessions));
+          setDebug(d => d + '\nactive sessions: ' + JSON.stringify(data.sessions));
+          setActiveSessions(data.sessions || []);
+          
           if (data.sessions && data.sessions.length > 0) {
             setSessionId(data.sessions[0].sessionId);
-          } else {
-            setDebug(d => d + '\nNo session assigned to this agent.');
+            setCurrentSession(data.sessions[0]);
+            setIsAvailable(false);
           }
+        })
+        .catch(err => {
+          setDebug(d => d + '\nerror fetching sessions: ' + err.message);
+        });
+
+      fetch('http://localhost:8080/api/sessions/ai')
+        .then(res => res.json())
+        .then(data => {
+          setDebug(d => d + '\nsystem sessions: ' + JSON.stringify(data.sessions));
+          setSystemSessions(data.sessions || []);
+        })
+        .catch(err => {
+          setDebug(d => d + '\nerror fetching system sessions: ' + err.message);
         });
     }
   }, []);
@@ -33,17 +53,125 @@ export default function AgentChat() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  if (!sessionId || !agentId) {
+  const handleTakeOverSystemSession = async (sessionId) => {
+    try {
+      const response = await fetch('http://localhost:8080/api/agent/takeover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: agentId,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.available) {
+        setSessionId(data.sessionId);
+        setCurrentSession({
+          sessionId: data.sessionId,
+          mode: 'human',
+          status: 'active'
+        });
+        setIsAvailable(false);
+        setDebug(d => d + '\ntook over session: ' + data.sessionId);
+        
+        fetch('http://localhost:8080/api/sessions/ai')
+          .then(res => res.json())
+          .then(data => setSystemSessions(data.sessions || []));
+      } else {
+        setDebug(d => d + '\nno system sessions available');
+      }
+    } catch (error) {
+      setDebug(d => d + '\ntakeover error: ' + error.message);
+    }
+  };
+
+  const handleSetAvailability = async (available) => {
+    try {
+      const response = await fetch('http://localhost:8080/api/agent/status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: agentId,
+          status: available ? 'available' : 'busy',
+        }),
+      });
+
+      if (response.ok) {
+        setIsAvailable(available);
+        setDebug(d => d + '\nstatus updated to: ' + (available ? 'available' : 'busy'));
+      }
+    } catch (error) {
+      setDebug(d => d + '\nstatus update error: ' + error.message);
+    }
+  };
+
+  const handleEndSession = () => {
+    setSessionId(null);
+    setCurrentSession(null);
+    setIsAvailable(true);
+    setDebug(d => d + '\nsession ended');
+  };
+
+  if (!agentId) {
     return (
       <div className={styles.container}>
         <div className={styles.card}>
           <div className={styles.logo}>
-            <h1>Bekleme Modu</h1>
+            <h1>Agent Girişi Gerekli</h1>
+            <p>Lütfen önce giriş yapın</p>
+          </div>
+          <div className={styles.link}>
+            <a href="/agent/login">Giriş Yap</a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionId) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.card}>
+          <div className={styles.logo}>
+            <h1>Agent Paneli</h1>
             <p>Müşteri eşleşmesi bekleniyor...</p>
           </div>
+          
+          <div className={styles.agentControls}>
+            <button 
+              className={`${styles.button} ${isAvailable ? styles.buttonPrimary : styles.buttonSecondary}`}
+              onClick={() => handleSetAvailability(!isAvailable)}
+            >
+              {isAvailable ? 'Uygun' : 'Meşgul'}
+            </button>
+          </div>
+
+          {systemSessions.length > 0 && isAvailable && (
+            <div className={styles.aiSessions}>
+              <h3>Sistem Session'ları ({systemSessions.length})</h3>
+              {systemSessions.map((session, index) => (
+                <div key={session.sessionId} className={styles.aiSessionItem}>
+                  <span>Session {index + 1}</span>
+                  <button 
+                    className={styles.button}
+                    onClick={() => handleTakeOverSystemSession(session.sessionId)}
+                  >
+                    Devral
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className={styles.link}>
             <a href="/agent/login">Tekrar Giriş Yap</a>
           </div>
+          
           {debug && (
             <div style={{ 
               marginTop: '20px', 
@@ -74,9 +202,23 @@ export default function AgentChat() {
   return (
     <div className={styles.chatContainer}>
       <header className={styles.chatHeader}>
-        <h1>Müşteri Temsilcisi Paneli</h1>
-        <div className={`${styles.statusBadge} ${styles.statusHuman}`}>
-          {connected ? 'Bağlı' : 'Bağlantı Kesildi'}
+        <div className={styles.headerLeft}>
+          <h1>Müşteri Temsilcisi Paneli</h1>
+          <div className={styles.sessionInfo}>
+            <span>Session: {sessionId?.substring(0, 8)}...</span>
+            <span>Mode: {currentSession?.mode || 'unknown'}</span>
+          </div>
+        </div>
+        <div className={styles.headerRight}>
+          <div className={`${styles.statusBadge} ${styles.statusHuman}`}>
+            {connected ? 'Bağlı' : 'Bağlantı Kesildi'}
+          </div>
+          <button 
+            className={styles.button}
+            onClick={handleEndSession}
+          >
+            Session'ı Bitir
+          </button>
         </div>
       </header>
       

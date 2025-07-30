@@ -11,6 +11,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/gorilla/mux"
+	"backend/models"
 )
 
 type Agent struct {
@@ -178,4 +180,170 @@ func AgentLoginHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "Agent girişi başarılı",
 		"agentId": agent.ID.Hex(),
 	})
+}
+
+func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		AgentID string `json:"agentId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.AgentID == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	agentObjId, err := primitive.ObjectIDFromHex(body.AgentID)
+	if err != nil {
+		http.Error(w, "Invalid agent ID", http.StatusBadRequest)
+		return
+	}
+
+	var agent models.Agent
+	err = utils.AgentColl.FindOne(ctx, bson.M{"_id": agentObjId, "status": "available"}).Decode(&agent)
+	if err != nil {
+		http.Error(w, "Agent not available", http.StatusBadRequest)
+		return
+	}
+
+	var session models.Session
+	err = utils.SessionColl.FindOne(ctx, bson.M{
+		"mode": "system",
+		"status": "active",
+	}).Decode(&session)
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "No system sessions available to take over",
+			"available": false,
+		})
+		return
+	}
+
+	_, err = utils.SessionColl.UpdateOne(ctx,
+		bson.M{"_id": session.ID},
+		bson.M{"$set": bson.M{
+			"assignedAgent": body.AgentID,
+			"mode": "human",
+			"status": "active",
+			"lastActivity": time.Now(),
+		}},
+	)
+	if err != nil {
+		http.Error(w, "Failed to transfer session", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = utils.AgentColl.UpdateOne(ctx,
+		bson.M{"_id": agentObjId},
+		bson.M{"$set": bson.M{"status": "busy"}},
+	)
+	if err != nil {
+		log.Printf("[TAKEOVER][ERROR] Agent status 'busy' yapılamadı: %v\n", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Successfully took over system session",
+		"sessionId": session.ID.Hex(),
+		"agentId": body.AgentID,
+		"available": true,
+	})
+}
+
+func GetAgentActiveSessionsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	vars := mux.Vars(r)
+	agentId := vars["agentId"]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := utils.SessionColl.Find(ctx, bson.M{
+		"assignedAgent": agentId,
+		"status": bson.M{"$in": []string{"active", "waiting_for_agent"}},
+	})
+	if err != nil {
+		http.Error(w, "Failed to fetch sessions", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	sessions := []map[string]interface{}{}
+	for cursor.Next(ctx) {
+		var s models.Session
+		if err := cursor.Decode(&s); err == nil {
+			sessions = append(sessions, map[string]interface{}{
+				"sessionId": s.ID.Hex(),
+				"userId": s.UserID,
+				"mode": s.Mode,
+				"status": s.Status,
+				"createdAt": s.CreatedAt,
+				"lastActivity": s.LastActivity,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})
+}
+
+func GetAISessionsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := utils.SessionColl.Find(ctx, bson.M{
+		"mode": "system",
+		"status": "active",
+	})
+	if err != nil {
+		http.Error(w, "Failed to fetch system sessions", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	sessions := []map[string]interface{}{}
+	for cursor.Next(ctx) {
+		var s models.Session
+		if err := cursor.Decode(&s); err == nil {
+			sessions = append(sessions, map[string]interface{}{
+				"sessionId": s.ID.Hex(),
+				"userId": s.UserID,
+				"createdAt": s.CreatedAt,
+				"lastActivity": s.LastActivity,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})
 }

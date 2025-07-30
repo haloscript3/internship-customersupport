@@ -31,6 +31,13 @@ func main() {
 	router.HandleFunc("/api/session/messages", handlers.SessionMessagesGetHandler)
 	router.HandleFunc("/api/session/info", handlers.GetSessionInfoHandler).Methods("GET", "OPTIONS")
 	router.HandleFunc("/api/session/agent/{agentId}", handlers.GetAgentSessionsHandler).Methods("GET", "OPTIONS")
+	
+	// Yeni profesyonel sistem route'ları
+	router.HandleFunc("/api/session/transfer", handlers.TransferToAgentHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/agent/takeover", handlers.TakeOverAISessionHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/agent/active-sessions/{agentId}", handlers.GetAgentActiveSessionsHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/sessions/ai", handlers.GetAISessionsHandler).Methods("GET", "OPTIONS")
+	
 	router.HandleFunc("/ws", websocket.HandleWebSocket)
 	fmt.Println("Server is running on http://localhost:8080")
 

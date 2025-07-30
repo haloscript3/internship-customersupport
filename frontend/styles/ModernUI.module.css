@@ -139,6 +139,25 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sessionInfo {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 .chatHeader h1 {
   margin: 0;
   font-size: 20px;
@@ -162,6 +181,127 @@
 .statusAI {
   background: #fef3c7;
   color: #92400e;
+}
+
+.statusError {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.statusConnecting {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.welcomeMessage {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.welcomeBubble {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  border-radius: 16px;
+  text-align: center;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+}
+
+.welcomeBubble h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.welcomeBubble p {
+  margin: 0 0 16px 0;
+  opacity: 0.9;
+  font-size: 14px;
+}
+
+.aiNote {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.aiNote small {
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+.agentControls {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+  gap: 12px;
+}
+
+.buttonPrimary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.buttonSecondary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.aiSessions {
+  margin: 20px 0;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.aiSessions h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #374151;
+  font-weight: 600;
+}
+
+.aiSessionItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.aiSessionItem:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.aiSessionItem span {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.aiSessionItem button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.aiSessionItem button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .chatMessages {

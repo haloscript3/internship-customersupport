@@ -18,7 +18,9 @@ type Session struct {
     UserID         string             `bson:"userId"          json:"userId"`
     AssignedAgent  string             `bson:"assignedAgent"   json:"assignedAgent"`
     Mode           string             `bson:"mode"            json:"mode"`
+    Status         string             `bson:"status"          json:"status"`
     CreatedAt      time.Time          `bson:"createdAt"       json:"createdAt"`
+    LastActivity   time.Time          `bson:"lastActivity"    json:"lastActivity"`
 }
 
 type Message struct {

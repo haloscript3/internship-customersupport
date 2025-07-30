@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-type GeminiRequest struct {
+type SystemRequest struct {
 	Contents []struct {
 		Parts []struct {
 			Text string `json:"text"`
@@ -18,7 +18,7 @@ type GeminiRequest struct {
 	} `json:"contents"`
 }
 
-type GeminiResponse struct {
+type SystemResponse struct {
 	Candidates []struct {
 		Content struct {
 			Parts []struct {
@@ -34,11 +34,9 @@ func AskGemini(message string) (string, error) {
 		return "", errors.New("API key not found in environment")
 	}
 
-	fmt.Println(" API Key:", apiKey)
-
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-	payload := GeminiRequest{
+	payload := SystemRequest{
 		Contents: []struct {
 			Parts []struct {
 				Text string `json:"text"`
@@ -76,17 +74,17 @@ func AskGemini(message string) (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		return "", fmt.Errorf("Gemini API error: %s", string(bodyBytes))
+		return "", fmt.Errorf("System API error: %s", string(bodyBytes))
 	}
 
-	var geminiResp GeminiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+	var systemResp SystemResponse
+	if err := json.NewDecoder(resp.Body).Decode(&systemResp); err != nil {
 		return "", err
 	}
 
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", errors.New("Gemini returned no response")
+	if len(systemResp.Candidates) == 0 || len(systemResp.Candidates[0].Content.Parts) == 0 {
+		return "", errors.New("System returned no response")
 	}
 
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+	return systemResp.Candidates[0].Content.Parts[0].Text, nil
 }

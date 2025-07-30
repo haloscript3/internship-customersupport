@@ -51,23 +51,43 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	userID := query.Get("userId")
 	agentID := query.Get("agentId")
+	sessionID := query.Get("sessionId")
+	
 	if userID != "" {
 		userConns[userID] = conn
+		if sessionID != "" {
+			sessionObjId, _ := primitive.ObjectIDFromHex(sessionID)
+			var session models.Session
+			err := utils.SessionColl.FindOne(context.TODO(), bson.M{"_id": sessionObjId}).Decode(&session)
+			if err == nil {
+				out := map[string]interface{}{
+					"sender": "system",
+					"mode": session.Mode,
+					"status": session.Status,
+					"assignedAgent": session.AssignedAgent,
+				}
+				jsonData, _ := json.Marshal(out)
+				conn.WriteMessage(websocket.TextMessage, jsonData)
+			}
+		}
 	}
+	
 	if agentID != "" {
 		agentConns[agentID] = conn
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "ai"}, bson.M{"$set": bson.M{"mode": "human"}})
-		sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentID, "mode": "human"})
+		
+		sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentID, "status": "active"})
 		for sessions.Next(ctx) {
 			var s models.Session
 			if err := sessions.Decode(&s); err == nil {
 				userConn := GetUserConn(s.UserID)
 				if userConn != nil {
-					out := map[string]string{
+					out := map[string]interface{}{
 						"sender": "system",
-						"mode":   "human",
+						"mode": "human",
+						"status": "active",
+						"assignedAgent": agentID,
 					}
 					jsonData, _ := json.Marshal(out)
 					userConn.WriteMessage(websocket.TextMessage, jsonData)
@@ -75,6 +95,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	
 	defer func() {
 		if userID != "" {
 			delete(userConns, userID)
@@ -83,20 +104,29 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			delete(agentConns, agentID)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			
 			agentObjId, err := primitive.ObjectIDFromHex(agentID)
 			if err == nil {
 				utils.AgentColl.UpdateOne(ctx, bson.M{"_id": agentObjId}, bson.M{"$set": bson.M{"status": "available"}})
 			}
-			utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "human"}, bson.M{"$set": bson.M{"mode": "ai"}})
-			sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentID, "mode": "ai"})
+			
+			utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "human"}, bson.M{"$set": bson.M{
+				"mode": "system",
+				"assignedAgent": "System",
+				"status": "active",
+			}})
+			
+			sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": "System", "mode": "system"})
 			for sessions.Next(ctx) {
 				var s models.Session
 				if err := sessions.Decode(&s); err == nil {
 					userConn := GetUserConn(s.UserID)
 					if userConn != nil {
-						out := map[string]string{
+						out := map[string]interface{}{
 							"sender": "system",
-							"mode":   "ai",
+							"mode": "system",
+							"status": "active",
+							"assignedAgent": "System",
 						}
 						jsonData, _ := json.Marshal(out)
 						userConn.WriteMessage(websocket.TextMessage, jsonData)
@@ -106,6 +136,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		conn.Close()
 	}()
+	
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -136,6 +167,8 @@ func HandleWebSocketMessage(messageData []byte) {
 		return
 	}
 
+	utils.SessionColl.UpdateOne(context.TODO(), bson.M{"_id": sessionID}, bson.M{"$set": bson.M{"lastActivity": time.Now()}})
+
 	msg := models.Message{
 		SessionID: sessionID,
 		Sender:    incoming.Sender,
@@ -147,21 +180,21 @@ func HandleWebSocketMessage(messageData []byte) {
 		log.Println("Failed to save message:", err)
 	}
 
-	if session.Mode == "ai" {
+	if session.Mode == "system" {
 		reply, err := utils.AskGemini(incoming.Message)
 		if err != nil {
-			log.Println("AI error:", err)
+			log.Println("System error:", err)
 			return
 		}
-		aiMsg := models.Message{
+		systemMsg := models.Message{
 			SessionID: sessionID,
-			Sender:    "ai",
+			Sender:    "system",
 			Text:      reply,
 			Timestamp: time.Now(),
 		}
-		_, _ = utils.MessageColl.InsertOne(context.Background(), aiMsg)
+		_, _ = utils.MessageColl.InsertOne(context.Background(), systemMsg)
 		out := map[string]string{
-			"sender":  "ai",
+			"sender":  "system",
 			"message": reply,
 		}
 		jsonData, _ := json.Marshal(out)
