@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import styles from '../../styles/ModernUI.module.css';
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
 
 export default function AgentLogin() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -34,15 +39,17 @@ export default function AgentLogin() {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <div className={styles.logo}>
-          <h1>Agent Girişi</h1>
-          <p>Müşteri temsilcisi paneli</p>
+    <div className={`${inter.variable} min-h-screen bg-background flex items-center justify-center p-4`}>
+      <div className="card w-full max-w-md">
+        <div className="card-header text-center">
+          <h1 className="card-title">Agent Girişi</h1>
+          <p className="card-description">
+            Müşteri temsilcisi paneli
+          </p>
         </div>
         
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <div className={styles.inputGroup}>
+        <form onSubmit={handleSubmit} className="card-content space-y-4">
+          <div className="space-y-2">
             <input
               name="email"
               type="email"
@@ -50,11 +57,11 @@ export default function AgentLogin() {
               value={form.email}
               onChange={handleChange}
               required
-              className={styles.input}
+              className="input"
             />
           </div>
           
-          <div className={styles.inputGroup}>
+          <div className="space-y-2">
             <input
               name="password"
               type="password"
@@ -62,21 +69,26 @@ export default function AgentLogin() {
               value={form.password}
               onChange={handleChange}
               required
-              className={styles.input}
+              className="input"
             />
           </div>
           
           <button 
             type="submit" 
             disabled={loading} 
-            className={styles.button}
+            className="btn btn-primary btn-md w-full"
           >
             {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
           </button>
         </form>
         
-        <div className={styles.link}>
-          Hesabınız yok mu? <a href="/agent/register">Kayıt olun</a>
+        <div className="card-footer justify-center">
+          <p className="text-sm text-muted-foreground">
+            Hesabınız yok mu?{' '}
+            <a href="/agent/register" className="text-primary hover:underline">
+              Kayıt olun
+            </a>
+          </p>
         </div>
       </div>
     </div>

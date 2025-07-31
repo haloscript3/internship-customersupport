@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import styles from '../../styles/ModernUI.module.css';
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
 
 export default function AgentRegister() {
   const [form, setForm] = useState({
@@ -44,26 +49,28 @@ export default function AgentRegister() {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <div className={styles.logo}>
-          <h1>Agent Kayıt</h1>
-          <p>Müşteri temsilcisi hesabı oluşturun</p>
+    <div className={`${inter.variable} min-h-screen bg-background flex items-center justify-center p-4`}>
+      <div className="card w-full max-w-md">
+        <div className="card-header text-center">
+          <h1 className="card-title">Agent Kayıt</h1>
+          <p className="card-description">
+            Müşteri temsilcisi hesabı oluşturun
+          </p>
         </div>
         
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <div className={styles.inputGroup}>
+        <form onSubmit={handleSubmit} className="card-content space-y-4">
+          <div className="space-y-2">
             <input
               name="name"
               placeholder="Ad Soyad"
               value={form.name}
               onChange={handleChange}
               required
-              className={styles.input}
+              className="input"
             />
           </div>
           
-          <div className={styles.inputGroup}>
+          <div className="space-y-2">
             <input
               name="email"
               type="email"
@@ -71,11 +78,11 @@ export default function AgentRegister() {
               value={form.email}
               onChange={handleChange}
               required
-              className={styles.input}
+              className="input"
             />
           </div>
           
-          <div className={styles.inputGroup}>
+          <div className="space-y-2">
             <input
               name="password"
               type="password"
@@ -83,21 +90,26 @@ export default function AgentRegister() {
               value={form.password}
               onChange={handleChange}
               required
-              className={styles.input}
+              className="input"
             />
           </div>
           
           <button 
             type="submit" 
             disabled={loading} 
-            className={styles.button}
+            className="btn btn-primary btn-md w-full"
           >
             {loading ? 'Kaydediliyor...' : 'Kayıt Ol'}
           </button>
         </form>
         
-        <div className={styles.link}>
-          Zaten hesabınız var mı? <a href="/agent/login">Giriş yapın</a>
+        <div className="card-footer justify-center">
+          <p className="text-sm text-muted-foreground">
+            Zaten hesabınız var mı?{' '}
+            <a href="/agent/login" className="text-primary hover:underline">
+              Giriş yapın
+            </a>
+          </p>
         </div>
       </div>
     </div>

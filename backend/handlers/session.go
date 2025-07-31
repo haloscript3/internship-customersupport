@@ -1,18 +1,75 @@
 package handlers
 
 import (
-    "context"
-    "encoding/json"
-    "net/http"
-    "time"
+	"context"
+	"encoding/json"
+	"net/http"
+	"time"
 
-    "backend/models"
-    "backend/utils"
-    "go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"github.com/gorilla/mux"
+	"backend/models"
+	"backend/utils"
+	"backend/websocket"
 	"fmt"
+
+	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+func CleanupOldSessions() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	thirtyMinutesAgo := time.Now().Add(-30 * time.Minute)
+
+	result, err := utils.SessionColl.DeleteMany(ctx, bson.M{
+		"lastActivity": bson.M{"$lt": thirtyMinutesAgo},
+	})
+
+	if err != nil {
+		fmt.Printf("[CLEANUP][ERROR] Eski session'lar temizlenemedi: %v\n", err)
+	} else {
+		fmt.Printf("[CLEANUP][INFO] %d eski session temizlendi\n", result.DeletedCount)
+	}
+}
+
+func CleanupUserSessions(userID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := utils.SessionColl.Find(ctx, bson.M{
+		"userId": userID,
+		"status": bson.M{"$in": []string{"active", "waiting_for_agent"}},
+	})
+	if err != nil {
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var sessions []models.Session
+	for cursor.Next(ctx) {
+		var session models.Session
+		if err := cursor.Decode(&session); err == nil {
+			sessions = append(sessions, session)
+		}
+	}
+
+	if len(sessions) > 1 {
+		var latestSession models.Session
+		for _, session := range sessions {
+			if session.LastActivity.After(latestSession.LastActivity) {
+				latestSession = session
+			}
+		}
+
+		for _, session := range sessions {
+			if session.ID != latestSession.ID {
+				utils.SessionColl.DeleteOne(ctx, bson.M{"_id": session.ID})
+				fmt.Printf("[CLEANUP][INFO] User %s için eski session silindi: %s\n", userID, session.ID.Hex())
+			}
+		}
+	}
+}
 
 func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -36,6 +93,8 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	CleanupUserSessions(body.UserID)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -46,26 +105,26 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}).Decode(&existingSession)
 
 	if err == nil {
-		fmt.Printf("[SESSION][INFO] Önceki session bulundu: %s, Agent: %s, Mode: %s\n", 
+		fmt.Printf("[SESSION][INFO] Önceki session bulundu: %s, Agent: %s, Mode: %s\n",
 			existingSession.ID.Hex(), existingSession.AssignedAgent, existingSession.Mode)
-		
+
 		if existingSession.Mode == "human" && existingSession.AssignedAgent != "System" {
 			agentObjId, _ := primitive.ObjectIDFromHex(existingSession.AssignedAgent)
 			var agent models.Agent
 			agentErr := utils.AgentColl.FindOne(ctx, bson.M{"_id": agentObjId, "status": "available"}).Decode(&agent)
-			
+
 			if agentErr == nil {
 				_, updateErr := utils.SessionColl.UpdateOne(ctx,
 					bson.M{"_id": existingSession.ID},
 					bson.M{"$set": bson.M{
 						"lastActivity": time.Now(),
-						"status": "active",
+						"status":       "active",
 					}},
 				)
 				if updateErr != nil {
 					fmt.Printf("[SESSION][ERROR] Session güncellenemedi: %v\n", updateErr)
 				}
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]string{
 					"sessionId":     existingSession.ID.Hex(),
@@ -80,15 +139,15 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 					bson.M{"_id": existingSession.ID},
 					bson.M{"$set": bson.M{
 						"assignedAgent": "System",
-						"mode": "system",
-						"status": "active",
-						"lastActivity": time.Now(),
+						"mode":          "system",
+						"status":        "active",
+						"lastActivity":  time.Now(),
 					}},
 				)
 				if updateErr != nil {
 					fmt.Printf("[SESSION][ERROR] Session sistem transfer edilemedi: %v\n", updateErr)
 				}
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]string{
 					"sessionId":     existingSession.ID.Hex(),
@@ -103,13 +162,13 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 				bson.M{"_id": existingSession.ID},
 				bson.M{"$set": bson.M{
 					"lastActivity": time.Now(),
-					"status": "active",
+					"status":       "active",
 				}},
 			)
 			if updateErr != nil {
 				fmt.Printf("[SESSION][ERROR] Sistem session güncellenemedi: %v\n", updateErr)
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
 				"sessionId":     existingSession.ID.Hex(),
@@ -124,7 +183,7 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 	assigned := "System"
 	mode := "system"
 	status := "active"
-	
+
 	if body.AgentID != "" {
 		agentObjId, _ := primitive.ObjectIDFromHex(body.AgentID)
 		assigned = body.AgentID
@@ -136,30 +195,14 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("[SESSION][OK] Agent doğrudan atandı ve status 'busy': %s\n", body.AgentID)
 		}
 	} else {
-		var agent models.Agent
-		err := utils.AgentColl.FindOne(ctx, bson.M{"status": "available"}).Decode(&agent)
-		if err == nil {
-			_, errUpdate := utils.AgentColl.UpdateOne(ctx,
-				bson.M{"_id": agent.ID},
-				bson.M{"$set": bson.M{"status": "busy"}},
-			)
-			if errUpdate != nil {
-				fmt.Printf("[SESSION][ERROR] Agent status 'busy' yapılamadı: %v\n", errUpdate)
-			} else {
-				fmt.Printf("[SESSION][OK] Agent atandı ve status 'busy': %s\n", agent.ID.Hex())
-			}
-			assigned = agent.ID.Hex()
-			mode = "human"
-		} else {
-			fmt.Printf("[SESSION][WARN] Agent bulunamadı, sistem devrede.\n")
-		}
+		fmt.Printf("[SESSION][INFO] Agent talep edilmedi, sistem modunda başlatılıyor.\n")
 	}
 
 	session := models.Session{
 		UserID:        body.UserID,
 		AssignedAgent: assigned,
-		Mode:           mode,
-		Status:         status,
+		Mode:          mode,
+		Status:        status,
 		CreatedAt:     time.Now(),
 		LastActivity:  time.Now(),
 	}
@@ -226,9 +269,9 @@ func TransferToAgentHandler(w http.ResponseWriter, r *http.Request) {
 		bson.M{"_id": sessionObjId},
 		bson.M{"$set": bson.M{
 			"assignedAgent": body.AgentID,
-			"mode": "human",
-			"status": "active",
-			"lastActivity": time.Now(),
+			"mode":          "human",
+			"status":        "active",
+			"lastActivity":  time.Now(),
 		}},
 	)
 	if err != nil {
@@ -246,9 +289,9 @@ func TransferToAgentHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Session successfully transferred to agent",
+		"message":   "Session successfully transferred to agent",
 		"sessionId": body.SessionID,
-		"agentId": body.AgentID,
+		"agentId":   body.AgentID,
 	})
 }
 
@@ -276,7 +319,7 @@ func GetAgentSessionsHandler(w http.ResponseWriter, r *http.Request) {
 		if err := cursor.Decode(&s); err == nil {
 			sessions = append(sessions, map[string]interface{}{
 				"sessionId": s.ID.Hex(),
-				"userId": s.UserID,
+				"userId":    s.UserID,
 				"createdAt": s.CreatedAt,
 			})
 		}
@@ -316,7 +359,116 @@ func GetSessionInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"mode": session.Mode,
+		"mode":          session.Mode,
 		"assignedAgent": session.AssignedAgent,
+	})
+}
+
+func EndSessionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SessionID == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sessionObjId, err := primitive.ObjectIDFromHex(body.SessionID)
+	if err != nil {
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
+		return
+	}
+
+	var session models.Session
+	err = utils.SessionColl.FindOne(ctx, bson.M{"_id": sessionObjId}).Decode(&session)
+	if err != nil {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	_, err = utils.SessionColl.UpdateOne(ctx,
+		bson.M{"_id": sessionObjId},
+		bson.M{"$set": bson.M{
+			"status":       "completed",
+			"lastActivity": time.Now(),
+		}},
+	)
+	if err != nil {
+		http.Error(w, "Failed to end session", http.StatusInternalServerError)
+		return
+	}
+
+	if session.AssignedAgent != "System" && session.AssignedAgent != "" {
+		agentObjId, _ := primitive.ObjectIDFromHex(session.AssignedAgent)
+		utils.AgentColl.UpdateOne(ctx, bson.M{"_id": agentObjId}, bson.M{"$set": bson.M{"status": "available"}})
+	}
+
+	websocket.NotifySessionEnded(body.SessionID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Session ended successfully",
+	})
+}
+
+func GetUserActiveSessionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		http.Error(w, "userId required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var session models.Session
+	err := utils.SessionColl.FindOne(ctx, bson.M{
+		"userId": userID,
+		"status": bson.M{"$in": []string{"active", "waiting_for_agent"}},
+	}).Decode(&session)
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"hasActiveSession": false,
+			"session":          nil,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"hasActiveSession": true,
+		"session": map[string]interface{}{
+			"sessionId":     session.ID.Hex(),
+			"mode":          session.Mode,
+			"status":        session.Status,
+			"assignedAgent": session.AssignedAgent,
+			"createdAt":     session.CreatedAt,
+			"lastActivity":  session.LastActivity,
+		},
 	})
 }

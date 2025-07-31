@@ -1,16 +1,8 @@
 import Head from "next/head";
-import Image from "next/image";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import styles from "@/styles/Home.module.css";
-import modernStyles from "@/styles/ModernUI.module.css";
+import { Inter } from "next/font/google";
 
 const inter = Inter({
   variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -23,73 +15,63 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <div className={modernStyles.container}>
-        <div className={modernStyles.card}>
-          <div className={modernStyles.logo}>
-            <h1>AI Destekli Müşteri Hizmetleri</h1>
-            <p>Modern ve akıllı müşteri desteği platformu</p>
+      <div className={`${inter.variable} min-h-screen bg-gray-900 text-white flex items-center justify-center p-4`}>
+        <div className="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-md p-6">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-semibold mb-2">
+              AI Destekli Müşteri Hizmetleri
+            </h1>
+            <p className="text-gray-400">
+              Modern ve akıllı müşteri desteği platformu
+            </p>
           </div>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '30px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#374151', fontSize: '18px' }}>
+          <div className="space-y-6">
+            <div className="text-center">
+              <h3 className="text-lg font-medium mb-3">
                 Müşteri misiniz?
               </h3>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <div className="flex gap-3 justify-center">
                 <a 
                   href="/user/login" 
-                  className={modernStyles.button}
-                  style={{ flex: 1, maxWidth: '150px', textAlign: 'center' }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
                 >
                   Giriş Yap
                 </a>
                 <a 
                   href="/user/register" 
-                  className={modernStyles.button}
-                  style={{ 
-                    flex: 1, 
-                    maxWidth: '150px', 
-                    textAlign: 'center',
-                    background: 'transparent',
-                    color: '#667eea',
-                    border: '2px solid #667eea'
-                  }}
+                  className="border border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-md"
                 >
                   Kayıt Ol
                 </a>
               </div>
             </div>
             
-            <div style={{ 
-              width: '100%', 
-              height: '1px', 
-              background: 'linear-gradient(90deg, transparent, #e5e7eb, transparent)',
-              margin: '20px 0'
-            }} />
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-gray-600" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-gray-800 px-2 text-gray-400">
+                  veya
+                </span>
+              </div>
+            </div>
             
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#374151', fontSize: '18px' }}>
+            <div className="text-center">
+              <h3 className="text-lg font-medium mb-3">
                 Müşteri Temsilcisi misiniz?
               </h3>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <div className="flex gap-3 justify-center">
                 <a 
                   href="/agent/login" 
-                  className={modernStyles.button}
-                  style={{ flex: 1, maxWidth: '150px', textAlign: 'center' }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
                 >
                   Agent Girişi
                 </a>
                 <a 
                   href="/agent/register" 
-                  className={modernStyles.button}
-                  style={{ 
-                    flex: 1, 
-                    maxWidth: '150px', 
-                    textAlign: 'center',
-                    background: 'transparent',
-                    color: '#667eea',
-                    border: '2px solid #667eea'
-                  }}
+                  className="border border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-md"
                 >
                   Agent Kayıt
                 </a>
@@ -97,8 +79,8 @@ export default function Home() {
             </div>
           </div>
           
-          <div className={modernStyles.link} style={{ marginTop: '30px' }}>
-            <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>
+          <div className="text-center mt-6">
+            <p className="text-xs text-gray-500">
               AI destekli müşteri hizmetleri platformu
             </p>
           </div>

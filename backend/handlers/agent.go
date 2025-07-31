@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"time"
 
-	"backend/utils" 
+	"backend/models"
+	"backend/utils"
+
+	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/gorilla/mux"
-	"backend/models"
 )
 
 type Agent struct {
@@ -20,7 +21,7 @@ type Agent struct {
 	Name      string             `bson:"name" json:"name"`
 	Email     string             `bson:"email" json:"email"`
 	Password  string             `bson:"password,omitempty" json:"-"`
-	Status	  string				`bson:"status" json:"status"`
+	Status    string             `bson:"status" json:"status"`
 	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
@@ -39,7 +40,7 @@ func AgentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	type requestBody struct {
 		AgentID string `json:"agentId"`
-		Status  string `json:"status"` 
+		Status  string `json:"status"`
 	}
 
 	var req requestBody
@@ -221,14 +222,14 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	var session models.Session
 	err = utils.SessionColl.FindOne(ctx, bson.M{
-		"mode": "system",
+		"mode":   "system",
 		"status": "active",
 	}).Decode(&session)
 
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": "No system sessions available to take over",
+			"message":   "No system sessions available to take over",
 			"available": false,
 		})
 		return
@@ -238,9 +239,9 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 		bson.M{"_id": session.ID},
 		bson.M{"$set": bson.M{
 			"assignedAgent": body.AgentID,
-			"mode": "human",
-			"status": "active",
-			"lastActivity": time.Now(),
+			"mode":          "human",
+			"status":        "active",
+			"lastActivity":  time.Now(),
 		}},
 	)
 	if err != nil {
@@ -258,9 +259,9 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Successfully took over system session",
+		"message":   "Successfully took over system session",
 		"sessionId": session.ID.Hex(),
-		"agentId": body.AgentID,
+		"agentId":   body.AgentID,
 		"available": true,
 	})
 }
@@ -277,14 +278,21 @@ func GetAgentActiveSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	agentId := vars["agentId"]
 
+	log.Printf("[AGENT] Getting active sessions for agent: %s", agentId)
+
+	CleanupOldSessions()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	cursor, err := utils.SessionColl.Find(ctx, bson.M{
-		"assignedAgent": agentId,
-		"status": bson.M{"$in": []string{"active", "waiting_for_agent"}},
+		"$or": []bson.M{
+			{"assignedAgent": agentId, "status": bson.M{"$in": []string{"active", "waiting_for_agent"}}},
+			{"assignedAgent": "System", "mode": "system", "status": "active"},
+		},
 	})
 	if err != nil {
+		log.Printf("[AGENT][ERROR] Failed to fetch sessions: %v", err)
 		http.Error(w, "Failed to fetch sessions", http.StatusInternalServerError)
 		return
 	}
@@ -295,15 +303,18 @@ func GetAgentActiveSessionsHandler(w http.ResponseWriter, r *http.Request) {
 		var s models.Session
 		if err := cursor.Decode(&s); err == nil {
 			sessions = append(sessions, map[string]interface{}{
-				"sessionId": s.ID.Hex(),
-				"userId": s.UserID,
-				"mode": s.Mode,
-				"status": s.Status,
-				"createdAt": s.CreatedAt,
+				"sessionId":    s.ID.Hex(),
+				"userId":       s.UserID,
+				"mode":         s.Mode,
+				"status":       s.Status,
+				"createdAt":    s.CreatedAt,
 				"lastActivity": s.LastActivity,
 			})
+			log.Printf("[AGENT] Found session: %s for user: %s, mode: %s", s.ID.Hex(), s.UserID, s.Mode)
 		}
 	}
+
+	log.Printf("[AGENT] Total active sessions for agent %s: %d", agentId, len(sessions))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})
@@ -322,7 +333,7 @@ func GetAISessionsHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	cursor, err := utils.SessionColl.Find(ctx, bson.M{
-		"mode": "system",
+		"mode":   "system",
 		"status": "active",
 	})
 	if err != nil {
@@ -336,9 +347,9 @@ func GetAISessionsHandler(w http.ResponseWriter, r *http.Request) {
 		var s models.Session
 		if err := cursor.Decode(&s); err == nil {
 			sessions = append(sessions, map[string]interface{}{
-				"sessionId": s.ID.Hex(),
-				"userId": s.UserID,
-				"createdAt": s.CreatedAt,
+				"sessionId":    s.ID.Hex(),
+				"userId":       s.UserID,
+				"createdAt":    s.CreatedAt,
 				"lastActivity": s.LastActivity,
 			})
 		}

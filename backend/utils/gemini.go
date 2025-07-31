@@ -31,7 +31,7 @@ type SystemResponse struct {
 func AskGemini(message string) (string, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		return "", errors.New("API key not found in environment")
+		return "Merhaba! Ben AI asistanınızım. Size nasıl yardımcı olabilirim? (Test modu - API key gerekli)", nil
 	}
 
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"

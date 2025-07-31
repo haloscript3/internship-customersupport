@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import useChatWebSocket from '../../useChatWebSocket';
-import styles from '../../styles/ModernUI.module.css';
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
 
 export default function UserChat() {
   const [sessionId, setSessionId] = useState(null);
@@ -50,6 +55,9 @@ export default function UserChat() {
         if (msg.assignedAgent) {
           setAssignedAgent(msg.assignedAgent);
         }
+        if (msg.message) {
+          setMessages((prev) => [...prev, { sender: 'system', text: msg.message }]);
+        }
         return;
       }
       
@@ -83,14 +91,16 @@ export default function UserChat() {
 
   if (!sessionId || !userId) {
     return (
-      <div className={styles.container}>
-        <div className={styles.card}>
-          <div className={styles.logo}>
-            <h1>Oturum Gerekli</h1>
-            <p>Lütfen önce giriş yapın</p>
+      <div className={`${inter.variable} min-h-screen bg-background flex items-center justify-center p-4`}>
+        <div className="card w-full max-w-md">
+          <div className="card-header text-center">
+            <h1 className="card-title">Oturum Gerekli</h1>
+            <p className="card-description">Lütfen önce giriş yapın</p>
           </div>
-          <div className={styles.link}>
-            <a href="/user/login">Giriş Yap</a>
+          <div className="card-footer justify-center">
+            <a href="/user/login" className="btn btn-primary btn-md">
+              Giriş Yap
+            </a>
           </div>
         </div>
       </div>
@@ -123,45 +133,47 @@ export default function UserChat() {
 
   const getStatusBadgeClass = () => {
     if (sessionStatus === 'error' || sessionStatus === 'disconnected') {
-      return `${styles.statusBadge} ${styles.statusError}`;
+      return "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-destructive text-destructive-foreground";
     }
     if (mode === 'human') {
-      return `${styles.statusBadge} ${styles.statusHuman}`;
+      return "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
     }
     if (mode === 'system') {
-      return `${styles.statusBadge} ${styles.statusAI}`;
+      return "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
     }
-    return `${styles.statusBadge} ${styles.statusConnecting}`;
+    return "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
   };
 
   return (
-    <div className={styles.chatContainer}>
-      <header className={styles.chatHeader}>
-        <div className={styles.headerLeft}>
-          <h1>Customer Service Chat</h1>
-          <div className={styles.sessionInfo}>
-            <span>Session: {sessionId?.substring(0, 8)}...</span>
-            {assignedAgent && assignedAgent !== 'System' && (
-              <span>Agent: {assignedAgent.substring(0, 8)}...</span>
-            )}
+    <div className={`${inter.variable} h-screen bg-background flex flex-col`}>
+      <header className="border-b bg-card px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold text-card-foreground">Customer Service Chat</h1>
+            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+              <span>Session: {sessionId?.substring(0, 8)}...</span>
+              {assignedAgent && assignedAgent !== 'System' && (
+                <span>Agent: {assignedAgent.substring(0, 8)}...</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className={styles.headerRight}>
           <div className={getStatusBadgeClass()}>
             {getStatusMessage()}
           </div>
         </div>
       </header>
       
-      <div ref={chatRef} className={styles.chatMessages}>
+      <div ref={chatRef} className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.length === 0 && (
-          <div className={styles.welcomeMessage}>
-            <div className={styles.welcomeBubble}>
-              <h3>Hoş Geldiniz! 👋</h3>
-              <p>Size nasıl yardımcı olabilirim?</p>
+          <div className="flex justify-center">
+            <div className="bg-card border rounded-lg p-6 max-w-md text-center">
+              <h3 className="text-lg font-semibold mb-2">Hoş Geldiniz! 👋</h3>
+              <p className="text-muted-foreground mb-4">Size nasıl yardımcı olabilirim?</p>
               {mode === 'system' && (
-                <div className={styles.aiNote}>
-                  <small>🤖 Sistem Asistanı ile görüşüyorsunuz. Uygun bir müşteri temsilcisi bulunduğunda otomatik olarak transfer edileceksiniz.</small>
+                <div className="bg-muted/50 rounded-md p-3">
+                  <small className="text-muted-foreground">
+                    🤖 Sistem Asistanı ile görüşüyorsunuz. Uygun bir müşteri temsilcisi bulunduğunda otomatik olarak transfer edileceksiniz.
+                  </small>
                 </div>
               )}
             </div>
@@ -171,12 +183,14 @@ export default function UserChat() {
         {messages.map((msg, idx) => (
           <div 
             key={idx} 
-            className={`${styles.message} ${
-              msg.sender === 'user' ? styles.messageUser : styles.messageOther
+            className={`flex ${
+              msg.sender === 'user' ? 'justify-end' : 'justify-start'
             }`}
           >
-            <div className={`${styles.messageBubble} ${
-              msg.sender === 'user' ? styles.messageBubbleUser : styles.messageBubbleOther
+            <div className={`max-w-[70%] rounded-lg px-4 py-2 ${
+              msg.sender === 'user' 
+                ? 'bg-primary text-primary-foreground' 
+                : 'bg-muted text-muted-foreground'
             }`}>
               {msg.text}
             </div>
@@ -184,23 +198,25 @@ export default function UserChat() {
         ))}
       </div>
       
-      <div className={styles.chatInput}>
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Mesajınızı yazın..."
-          className={styles.input}
-          disabled={sessionStatus === 'error' || sessionStatus === 'disconnected'}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || sessionStatus === 'error' || sessionStatus === 'disconnected'}
-          className={styles.sendButton}
-        >
-          Gönder
-        </button>
+      <div className="border-t bg-card p-4">
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Mesajınızı yazın..."
+            className="input flex-1"
+            disabled={sessionStatus === 'error' || sessionStatus === 'disconnected'}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || sessionStatus === 'error' || sessionStatus === 'disconnected'}
+            className="btn btn-primary"
+          >
+            Gönder
+          </button>
+        </div>
       </div>
     </div>
   );

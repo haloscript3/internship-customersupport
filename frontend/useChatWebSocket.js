@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 
-/**
- * @param {string} sessionId
- * @param {string} senderId
- * @param {string} senderType
- * @returns { messages, sendMessage, connected }
- */
 export default function useChatWebSocket(sessionId, senderId, senderType) {
   const [messages, setMessages] = useState([]);
   const [connected, setConnected] = useState(false);
