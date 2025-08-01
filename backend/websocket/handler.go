@@ -233,6 +233,21 @@ func HandleWebSocketMessage(messageData []byte) {
 	}
 
 	if session.Mode == "system" {
+		if incoming.Sender == "user" {
+			userOut := map[string]string{
+				"sender":  "user",
+				"message": incoming.Message,
+			}
+			userJsonData, _ := json.Marshal(userOut)
+			userConn := GetUserConn(session.UserID)
+			if userConn != nil {
+				userConn.WriteMessage(websocket.TextMessage, userJsonData)
+				log.Printf("[WS] Echoed user message in system mode: %s", session.UserID)
+			} else {
+				log.Printf("[WS] User connection not found for echo in system mode: %s", session.UserID)
+			}
+		}
+
 		log.Printf("[WS] Processing system message for session: %s", sessionID.Hex())
 		reply, err := utils.AskGemini(incoming.Message)
 		if err != nil {
@@ -275,6 +290,14 @@ func HandleWebSocketMessage(messageData []byte) {
 				log.Printf("[WS] Sent user message to agent: %s", session.AssignedAgent)
 			} else {
 				log.Printf("[WS] Agent connection not found for: %s", session.AssignedAgent)
+			}
+
+			userConn := GetUserConn(session.UserID)
+			if userConn != nil {
+				userConn.WriteMessage(websocket.TextMessage, jsonData)
+				log.Printf("[WS] Echoed user message back to user: %s", session.UserID)
+			} else {
+				log.Printf("[WS] User connection not found for echo: %s", session.UserID)
 			}
 		} else {
 			userConn := GetUserConn(session.UserID)

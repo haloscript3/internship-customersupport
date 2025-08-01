@@ -266,6 +266,88 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func AssignSessionToAgentHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		AgentID   string `json:"agentId"`
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.AgentID == "" || body.SessionID == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	agentObjId, err := primitive.ObjectIDFromHex(body.AgentID)
+	if err != nil {
+		http.Error(w, "Invalid agent ID", http.StatusBadRequest)
+		return
+	}
+
+	sessionObjId, err := primitive.ObjectIDFromHex(body.SessionID)
+	if err != nil {
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
+		return
+	}
+
+	var agent models.Agent
+	err = utils.AgentColl.FindOne(ctx, bson.M{"_id": agentObjId, "status": "available"}).Decode(&agent)
+	if err != nil {
+		http.Error(w, "Agent not available", http.StatusBadRequest)
+		return
+	}
+
+	var session models.Session
+	err = utils.SessionColl.FindOne(ctx, bson.M{"_id": sessionObjId, "status": "active"}).Decode(&session)
+	if err != nil {
+		http.Error(w, "Session not found or not active", http.StatusBadRequest)
+		return
+	}
+
+	_, err = utils.SessionColl.UpdateOne(ctx,
+		bson.M{"_id": sessionObjId},
+		bson.M{"$set": bson.M{
+			"assignedAgent": body.AgentID,
+			"mode":          "human",
+			"status":        "active",
+			"lastActivity":  time.Now(),
+		}},
+	)
+	if err != nil {
+		http.Error(w, "Failed to assign session", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = utils.AgentColl.UpdateOne(ctx,
+		bson.M{"_id": agentObjId},
+		bson.M{"$set": bson.M{"status": "busy"}},
+	)
+	if err != nil {
+		log.Printf("[ASSIGN][ERROR] Agent status 'busy' yapılamadı: %v\n", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":   "Successfully assigned session to agent",
+		"sessionId": body.SessionID,
+		"agentId":   body.AgentID,
+		"success":   true,
+	})
+}
+
 func GetAgentActiveSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET,OPTIONS")

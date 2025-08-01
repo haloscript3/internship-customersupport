@@ -50,12 +50,14 @@ func main() {
 
 	r.HandleFunc("/api/user/register", handlers.UserRegisterHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/user/login", handlers.UserLoginHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/user/{userId}", handlers.GetUserInfoHandler).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/api/agent/register", handlers.AgentRegisterHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/agent/login", handlers.AgentLoginHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/agent/status", handlers.AgentStatusHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/agent/active-sessions/{agentId}", handlers.GetAgentActiveSessionsHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/agent/takeover", handlers.TakeOverAISessionHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/agent/assign-session", handlers.AssignSessionToAgentHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/agent/send", handlers.SendHandler).Methods("POST", "OPTIONS")
 
 	r.HandleFunc("/api/session/start", handlers.StartSessionHandler).Methods("POST", "OPTIONS")
@@ -65,6 +67,7 @@ func main() {
 	r.HandleFunc("/api/session/messages", handlers.SessionMessagesGetHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/session/agent/{agentId}", handlers.GetAgentSessionsHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/session/user/active", handlers.GetUserActiveSessionHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/session/user/{userId}", handlers.GetUserSessionsHandler).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/api/chat", handlers.ChatHandler).Methods("POST", "OPTIONS")
 

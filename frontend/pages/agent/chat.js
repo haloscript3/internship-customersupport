@@ -11,12 +11,10 @@ export default function AgentChat() {
   const [sessionId, setSessionId] = useState(null);
   const [agentId, setAgentId] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
-  const [systemSessions, setSystemSessions] = useState([]);
-  const [activeSessions, setActiveSessions] = useState([]);
+  const [userInfo, setUserInfo] = useState(null);
   const endRef = useRef(null);
   const [input, setInput] = useState('');
   const [debug, setDebug] = useState('');
-  const [isAvailable, setIsAvailable] = useState(true);
 
   useEffect(() => {
     const agentId = localStorage.getItem('agentId');
@@ -24,114 +22,68 @@ export default function AgentChat() {
     setDebug('agentId: ' + agentId);
     
     if (agentId) {
-      console.log('Fetching active sessions for agent:', agentId);
-      fetch(`http://localhost:8080/api/agent/active-sessions/${agentId}`)
-        .then(res => {
-          console.log('Active sessions response status:', res.status);
-          return res.json();
-        })
-        .then(data => {
-          console.log('Active sessions data:', data);
-          setDebug(d => d + '\nactive sessions: ' + JSON.stringify(data.sessions));
-          setActiveSessions(data.sessions || []);
-          
-          if (data.sessions && data.sessions.length > 0) {
-            console.log('Found user session:', data.sessions[0]);
-          } else {
-            console.log('No user sessions found');
-          }
-        })
-        .catch(err => {
-          console.error('Error fetching active sessions:', err);
-          setDebug(d => d + '\nerror fetching sessions: ' + err.message);
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionIdFromUrl = urlParams.get('sessionId');
+      
+      if (sessionIdFromUrl) {
+        setSessionId(sessionIdFromUrl);
+        setCurrentSession({
+          sessionId: sessionIdFromUrl,
+          mode: 'human',
+          status: 'active'
         });
-
-      console.log('Fetching AI sessions');
-      fetch('http://localhost:8080/api/sessions/ai')
-        .then(res => {
-          console.log('AI sessions response status:', res.status);
-          return res.json();
-        })
-        .then(data => {
-          console.log('AI sessions data:', data);
-          setDebug(d => d + '\nsystem sessions: ' + JSON.stringify(data.sessions));
-          setSystemSessions(data.sessions || []);
-        })
-        .catch(err => {
-          console.error('Error fetching AI sessions:', err);
-          setDebug(d => d + '\nerror fetching system sessions: ' + err.message);
-        });
+        setDebug(d => d + '\nsession from URL: ' + sessionIdFromUrl);
+      } else {
+        fetch(`http://localhost:8080/api/agent/active-sessions/${agentId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.sessions && data.sessions.length > 0) {
+              const assignedSession = data.sessions.find(s => s.assignedAgent === agentId);
+              if (assignedSession) {
+                setSessionId(assignedSession.sessionId);
+                setCurrentSession(assignedSession);
+                setDebug(d => d + '\nassigned session: ' + assignedSession.sessionId);
+              }
+            }
+          })
+          .catch(err => {
+            console.error('Error fetching assigned sessions:', err);
+            setDebug(d => d + '\nerror: ' + err.message);
+          });
+      }
     }
   }, []);
 
-  const { messages, sendMessage, connected } = useChatWebSocket(null, agentId, 'agent');
+  useEffect(() => {
+    if (currentSession && currentSession.userId) {
+      fetch(`http://localhost:8080/api/user/${currentSession.userId}`)
+        .then(res => res.json())
+        .then(data => {
+          setUserInfo(data);
+        })
+        .catch(err => {
+          console.error('Error fetching user info:', err);
+        });
+    }
+  }, [currentSession]);
+
+  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, agentId, 'agent');
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleTakeOverSystemSession = async (sessionId) => {
-    try {
-      const response = await fetch('http://localhost:8080/api/agent/takeover', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId: agentId,
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (response.ok && data.available) {
-        setSessionId(data.sessionId);
-        setCurrentSession({
-          sessionId: data.sessionId,
-          mode: 'human',
-          status: 'active'
-        });
-        setIsAvailable(false);
-        setDebug(d => d + '\ntook over session: ' + data.sessionId);
-        
-        fetch('http://localhost:8080/api/sessions/ai')
-          .then(res => res.json())
-          .then(data => setSystemSessions(data.sessions || []));
-      } else {
-        setDebug(d => d + '\nno system sessions available');
-      }
-    } catch (error) {
-      setDebug(d => d + '\ntakeover error: ' + error.message);
+  const getSenderInfo = (sender) => {
+    switch (sender) {
+      case 'agent':
+        return { name: 'Siz', icon: '👨‍💼', bgColor: 'bg-primary', textColor: 'text-primary-foreground' };
+      case 'user':
+        return { name: userInfo?.name || 'Müşteri', icon: '👤', bgColor: 'bg-blue-500', textColor: 'text-white' };
+      case 'system':
+        return { name: 'AI Asistan', icon: '🤖', bgColor: 'bg-gray-500', textColor: 'text-white' };
+      default:
+        return { name: 'Sistem', icon: '⚙️', bgColor: 'bg-gray-500', textColor: 'text-white' };
     }
-  };
-
-  const handleSetAvailability = async (available) => {
-    try {
-      const response = await fetch('http://localhost:8080/api/agent/status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId: agentId,
-          status: available ? 'available' : 'busy',
-        }),
-      });
-
-      if (response.ok) {
-        setIsAvailable(available);
-        setDebug(d => d + '\nstatus updated to: ' + (available ? 'available' : 'busy'));
-      }
-    } catch (error) {
-      setDebug(d => d + '\nstatus update error: ' + error.message);
-    }
-  };
-
-  const handleEndSession = () => {
-    setSessionId(null);
-    setCurrentSession(null);
-    setIsAvailable(true);
-    setDebug(d => d + '\nsession ended');
   };
 
   if (!agentId) {
@@ -152,54 +104,22 @@ export default function AgentChat() {
     );
   }
 
-  if (!sessionId) {
+  if (!sessionId || !currentSession) {
     return (
       <div className={`${inter.variable} min-h-screen bg-background flex items-center justify-center p-4`}>
         <div className="card w-full max-w-md">
           <div className="card-header text-center">
-            <h1 className="card-title">Agent Paneli</h1>
-            <p className="card-description">Müşteri eşleşmesi bekleniyor...</p>
+            <h1 className="card-title">Chat Session'ı Bulunamadı</h1>
+            <p className="card-description">Aktif bir chat session'ınız yok</p>
           </div>
-          
-          <div className="card-content space-y-4">
-            <div className="flex justify-center">
-              <button 
-                className={`btn btn-md ${isAvailable ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handleSetAvailability(!isAvailable)}
-              >
-                {isAvailable ? 'Uygun' : 'Meşgul'}
-              </button>
-            </div>
-
-            {systemSessions.length > 0 && isAvailable && (
-              <div className="space-y-3">
-                <h3 className="text-lg font-medium">Sistem Session'ları ({systemSessions.length})</h3>
-                {systemSessions.map((session, index) => (
-                  <div key={session.sessionId} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <span className="text-sm">Session {index + 1}</span>
-                    <button 
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleTakeOverSystemSession(session.sessionId)}
-                    >
-                      Devral
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="card-footer justify-center">
+          <div className="card-footer justify-center space-x-2">
+            <a href="/agent/sessions" className="btn btn-primary btn-md">
+              Session'ları Görüntüle
+            </a>
             <a href="/agent/login" className="btn btn-outline btn-md">
               Tekrar Giriş Yap
             </a>
           </div>
-          
-          {debug && (
-            <div className="mt-4 p-3 bg-muted rounded-lg">
-              <pre className="text-xs font-mono text-muted-foreground">{debug}</pre>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -215,121 +135,134 @@ export default function AgentChat() {
     if (e.key === 'Enter') handleSend();
   };
 
+  const handleEndSession = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch('http://localhost:8080/api/session/end', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: sessionId,
+        }),
+      });
+
+      if (response.ok) {
+        console.log('Session ended successfully');
+        window.location.href = '/agent/sessions';
+      } else {
+        console.error('Failed to end session');
+      }
+    } catch (error) {
+      console.error('Error ending session:', error);
+    }
+  };
+
   return (
     <div className={`${inter.variable} h-screen bg-background flex flex-col`}>
-      <header className="border-b bg-card px-6 py-4">
+      {/* Header */}
+      <header className="border-b bg-card px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-xl font-semibold text-card-foreground">Müşteri Temsilcisi Paneli</h1>
-            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-              <span>Agent ID: {agentId?.substring(0, 8)}...</span>
-              <span>Durum: {isAvailable ? 'Müsait' : 'Meşgul'}</span>
+          <div className="flex items-center space-x-3">
+            <a href="/agent/sessions" className="btn btn-ghost btn-sm p-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </a>
+            <div>
+              <h1 className="text-lg font-semibold text-card-foreground">Müşteri Temsilcisi</h1>
+              {userInfo && (
+                <div className="text-sm text-muted-foreground">
+                  <span className="font-medium">{userInfo.name}</span>
+                  <span className="mx-2">•</span>
+                  <span>{userInfo.email}</span>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+            <div className={`w-2 h-2 rounded-full ${
+              connected ? 'bg-green-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-xs text-muted-foreground">
               {connected ? 'Bağlı' : 'Bağlantı Kesildi'}
-            </div>
+            </span>
             <button 
-              className="btn btn-outline btn-sm"
-              onClick={() => handleSetAvailability(!isAvailable)}
+              className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+              onClick={handleEndSession}
             >
-              {isAvailable ? 'Müsait Değil' : 'Müsait'}
+              Sohbeti Bitir
             </button>
           </div>
         </div>
       </header>
       
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="space-y-4">
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">Aktif Müşteri Session'ları</h2>
+      {/* Chat Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={endRef}>
+        {messages.length === 0 && (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
             </div>
-            <div className="card-content">
-              {activeSessions.length > 0 ? (
-                <div className="space-y-2">
-                  {activeSessions.map((session, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <div className="font-medium">User: {session.userId?.substring(0, 8)}...</div>
-                        <div className="text-sm text-muted-foreground">
-                          Session: {session.sessionId?.substring(0, 8)}... | Mode: {session.mode}
-                        </div>
-                      </div>
-                      <button 
-                        className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          setSessionId(session.sessionId);
-                          setCurrentSession(session);
-                          setIsAvailable(false);
-                        }}
-                      >
-                        Session'ı Al
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Aktif müşteri session'ı bulunamadı</p>
-              )}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">Sistem Session'ları (AI Modu)</h2>
-            </div>
-            <div className="card-content">
-              {systemSessions.length > 0 ? (
-                <div className="space-y-2">
-                  {systemSessions.map((session, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <div className="font-medium">User: {session.userId?.substring(0, 8)}...</div>
-                        <div className="text-sm text-muted-foreground">
-                          Session: {session.sessionId?.substring(0, 8)}... | AI Modu
-                        </div>
-                      </div>
-                      <button 
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleTakeOverSystemSession(session.sessionId)}
-                      >
-                        Devral
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Sistem session'ı bulunamadı</p>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {debug && (
-          <div className="mt-4 p-3 bg-muted rounded-lg">
-            <pre className="text-xs font-mono text-muted-foreground">{debug}</pre>
+            <h3 className="text-lg font-medium text-card-foreground mb-2">Müşteri Bekleniyor</h3>
+            <p className="text-muted-foreground">Müşteri mesaj gönderdiğinde burada görünecek</p>
           </div>
         )}
+        
+        {messages.map((message, index) => {
+          const senderInfo = getSenderInfo(message.sender);
+          const isAgent = message.sender === 'agent';
+          
+          return (
+            <div key={index} className={`flex ${isAgent ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex items-start space-x-2 max-w-xs lg:max-w-md ${isAgent ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${senderInfo.bgColor} ${senderInfo.textColor} flex-shrink-0`}>
+                  {senderInfo.icon}
+                </div>
+                
+                {/* Message */}
+                <div className={`px-3 py-2 rounded-lg ${
+                  isAgent 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  <div className="text-sm">{message.text}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       
+      {/* Input Area */}
       <div className="border-t bg-card p-4">
-        <div className="flex space-x-2">
-          <input
-            className="input flex-1"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Müşteriye mesaj yazın..."
-            disabled={!currentSession}
-          />
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-medium">
+            👨‍💼
+          </div>
+          <div className="flex-1 relative">
+            <input
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Müşteriye mesaj yazın..."
+              disabled={!currentSession}
+            />
+          </div>
           <button 
-            className="btn btn-primary"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSend}
             disabled={!input.trim() || !currentSession}
           >
-            Gönder
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
           </button>
         </div>
       </div>

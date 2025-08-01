@@ -472,3 +472,102 @@ func GetUserActiveSessionHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+func GetUserSessionsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	if userID == "" {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	status := r.URL.Query().Get("status")
+
+	filter := bson.M{
+		"userId": userID,
+	}
+
+	if status != "" {
+		filter["status"] = status
+	} else {
+		thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+		filter["lastActivity"] = bson.M{"$gte": thirtyDaysAgo}
+	}
+
+	cursor, err := utils.SessionColl.Find(ctx, filter)
+	if err != nil {
+		http.Error(w, "Failed to fetch sessions", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var sessions []map[string]interface{}
+	for cursor.Next(ctx) {
+		var session models.Session
+		if err := cursor.Decode(&session); err == nil {
+			var lastMessage string
+			messageCursor, err := utils.MessageColl.Find(ctx, bson.M{
+				"sessionId": session.ID,
+			})
+
+			if err == nil {
+				var messages []models.Message
+				for messageCursor.Next(ctx) {
+					var message models.Message
+					if err := messageCursor.Decode(&message); err == nil {
+						messages = append(messages, message)
+					}
+				}
+				messageCursor.Close(ctx)
+
+				if len(messages) > 0 {
+					var latestMessage models.Message
+					for _, msg := range messages {
+						if msg.Timestamp.After(latestMessage.Timestamp) {
+							latestMessage = msg
+						}
+					}
+					lastMessage = latestMessage.Text
+				}
+			}
+
+			sessions = append(sessions, map[string]interface{}{
+				"sessionId":     session.ID.Hex(),
+				"userId":        session.UserID,
+				"mode":          session.Mode,
+				"status":        session.Status,
+				"assignedAgent": session.AssignedAgent,
+				"createdAt":     session.CreatedAt,
+				"lastActivity":  session.LastActivity,
+				"lastMessage":   lastMessage,
+			})
+		}
+	}
+
+	for i := 0; i < len(sessions)-1; i++ {
+		for j := i + 1; j < len(sessions); j++ {
+			timeI := sessions[i]["lastActivity"].(time.Time)
+			timeJ := sessions[j]["lastActivity"].(time.Time)
+			if timeI.Before(timeJ) {
+				sessions[i], sessions[j] = sessions[j], sessions[i]
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"sessions": sessions,
+	})
+}
