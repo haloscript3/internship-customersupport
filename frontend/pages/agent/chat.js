@@ -12,6 +12,7 @@ export default function AgentChat() {
   const [agentId, setAgentId] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
+  const [initialMessages, setInitialMessages] = useState([]);
   const endRef = useRef(null);
   const [input, setInput] = useState('');
   const [debug, setDebug] = useState('');
@@ -21,36 +22,62 @@ export default function AgentChat() {
     setAgentId(agentId);
     setDebug('agentId: ' + agentId);
     
-    if (agentId) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionIdFromUrl = urlParams.get('sessionId');
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionIdFromUrl = urlParams.get('sessionId');
+    console.log('URL params - sessionId:', sessionIdFromUrl, 'agentId:', agentId);
+    
+    if (sessionIdFromUrl) {
+      setSessionId(sessionIdFromUrl);
+      setCurrentSession({
+        sessionId: sessionIdFromUrl,
+        mode: 'human',
+        status: 'active'
+      });
+      setDebug(d => d + '\nsession from URL: ' + sessionIdFromUrl);
       
-      if (sessionIdFromUrl) {
-        setSessionId(sessionIdFromUrl);
-        setCurrentSession({
-          sessionId: sessionIdFromUrl,
-          mode: 'human',
-          status: 'active'
-        });
-        setDebug(d => d + '\nsession from URL: ' + sessionIdFromUrl);
-      } else {
-        fetch(`http://localhost:8080/api/agent/active-sessions/${agentId}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.sessions && data.sessions.length > 0) {
-              const assignedSession = data.sessions.find(s => s.assignedAgent === agentId);
-              if (assignedSession) {
-                setSessionId(assignedSession.sessionId);
-                setCurrentSession(assignedSession);
-                setDebug(d => d + '\nassigned session: ' + assignedSession.sessionId);
-              }
-            }
-          })
-          .catch(err => {
-            console.error('Error fetching assigned sessions:', err);
-            setDebug(d => d + '\nerror: ' + err.message);
-          });
+      const takeoverData = localStorage.getItem('sessionTakeoverData');
+      if (takeoverData) {
+        try {
+          const data = JSON.parse(takeoverData);
+    
+          if (data.sessionId === sessionIdFromUrl && Date.now() - data.timestamp < 300000) {
+    
+            const formattedMessages = data.messages.map(msg => ({
+              sender: msg.sender,
+              text: msg.text,
+              timestamp: msg.timestamp
+            }));
+            setInitialMessages(formattedMessages);
+            setUserInfo(data.userInfo);
+            setDebug(d => d + '\nloaded ' + formattedMessages.length + ' historical messages from localStorage');
+          }
+    
+          localStorage.removeItem('sessionTakeoverData');
+        } catch (e) {
+          console.error('Error parsing takeover data:', e);
+        }
       }
+      
+      if (!initialMessages.length) {
+        fetchSessionMessages(sessionIdFromUrl);
+      }
+    } else if (agentId) {
+      fetch(`http://localhost:8080/api/agent/active-sessions/${agentId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.sessions && data.sessions.length > 0) {
+            const assignedSession = data.sessions.find(s => s.assignedAgent === agentId);
+            if (assignedSession) {
+              setSessionId(assignedSession.sessionId);
+              setCurrentSession(assignedSession);
+              setDebug(d => d + '\nassigned session: ' + assignedSession.sessionId);
+            }
+          }
+        })
+        .catch(err => {
+          console.error('Error fetching assigned sessions:', err);
+          setDebug(d => d + '\nerror: ' + err.message);
+        });
     }
   }, []);
 
@@ -67,7 +94,34 @@ export default function AgentChat() {
     }
   }, [currentSession]);
 
-  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, agentId, 'agent');
+  const fetchSessionMessages = async (sessionId) => {
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/session/messages?sessionId=${sessionId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Fetched session messages:', data);
+        
+        const messagesArray = Array.isArray(data) ? data : (data.messages || []);
+        const formattedMessages = messagesArray.map(msg => ({
+          sender: msg.sender,
+          text: msg.text,
+          timestamp: msg.timestamp || new Date().toISOString()
+        }));
+        
+        setInitialMessages(formattedMessages);
+        setDebug(d => d + '\nloaded ' + formattedMessages.length + ' historical messages from API');
+      } else {
+        console.error('Failed to fetch session messages:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching session messages:', error);
+    }
+  };
+
+  const { messages, sendMessage, connected } = useChatWebSocket(sessionId, agentId, 'agent', initialMessages);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -80,6 +134,7 @@ export default function AgentChat() {
       case 'user':
         return { name: userInfo?.name || 'Müşteri', icon: '👤', bgColor: 'bg-blue-500', textColor: 'text-white' };
       case 'system':
+      case 'ai':
         return { name: 'AI Asistan', icon: '🤖', bgColor: 'bg-gray-500', textColor: 'text-white' };
       default:
         return { name: 'Sistem', icon: '⚙️', bgColor: 'bg-gray-500', textColor: 'text-white' };
@@ -162,7 +217,7 @@ export default function AgentChat() {
 
   return (
     <div className={`${inter.variable} h-screen bg-background flex flex-col`}>
-      {/* Header */}
+      
       <header className="border-b bg-card px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -189,6 +244,9 @@ export default function AgentChat() {
             <span className="text-xs text-muted-foreground">
               {connected ? 'Bağlı' : 'Bağlantı Kesildi'}
             </span>
+            <a href="/agent/messages" className="btn btn-outline btn-sm">
+              Mesaj Geçmişi
+            </a>
             <button 
               className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
               onClick={handleEndSession}
@@ -199,8 +257,16 @@ export default function AgentChat() {
         </div>
       </header>
       
-      {/* Chat Messages */}
+      
       <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={endRef}>
+        {initialMessages.length > 0 && (
+          <div className="flex justify-center mb-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800">
+              📜 Önceki {initialMessages.length} mesaj yüklendi - Sohbet geçmişi
+            </div>
+          </div>
+        )}
+        
         {messages.length === 0 && (
           <div className="text-center py-8">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
@@ -213,6 +279,7 @@ export default function AgentChat() {
           </div>
         )}
         
+
         {messages.map((message, index) => {
           const senderInfo = getSenderInfo(message.sender);
           const isAgent = message.sender === 'agent';
@@ -220,12 +287,12 @@ export default function AgentChat() {
           return (
             <div key={index} className={`flex ${isAgent ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex items-start space-x-2 max-w-xs lg:max-w-md ${isAgent ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                {/* Avatar */}
+                
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${senderInfo.bgColor} ${senderInfo.textColor} flex-shrink-0`}>
                   {senderInfo.icon}
                 </div>
                 
-                {/* Message */}
+                
                 <div className={`px-3 py-2 rounded-lg ${
                   isAgent 
                     ? 'bg-primary text-primary-foreground' 
@@ -239,7 +306,7 @@ export default function AgentChat() {
         })}
       </div>
       
-      {/* Input Area */}
+      
       <div className="border-t bg-card p-4">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-medium">

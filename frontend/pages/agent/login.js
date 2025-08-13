@@ -26,7 +26,7 @@ export default function AgentLogin() {
       if (res.ok) {
         const agentId = data.agentId;
         localStorage.setItem('agentId', agentId);
-        window.location.href = '/agent/chat';
+        window.location.href = '/agent/sessions';
       } else {
         alert(data.error || 'Giriş bilgileri hatalı.');
       }

@@ -9,8 +9,10 @@ import (
 
 	"backend/models"
 	"backend/utils"
+	"backend/websocket"
 
 	"github.com/gorilla/mux"
+	gorillaws "github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
@@ -195,9 +197,9 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
 	var body struct {
-		AgentID string `json:"agentId"`
+		AgentID   string `json:"agentId"`
+		SessionID string `json:"sessionId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.AgentID == "" {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -221,21 +223,46 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var session models.Session
-	err = utils.SessionColl.FindOne(ctx, bson.M{
-		"mode":   "system",
-		"status": "active",
-	}).Decode(&session)
 
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":   "No system sessions available to take over",
-			"available": false,
-		})
-		return
+	if body.SessionID != "" {
+		sessionObjID, err := primitive.ObjectIDFromHex(body.SessionID)
+		if err != nil {
+			http.Error(w, "Invalid session ID", http.StatusBadRequest)
+			return
+		}
+
+		err = utils.SessionColl.FindOne(ctx, bson.M{
+			"_id":    sessionObjID,
+			"mode":   "system",
+			"status": "active",
+		}).Decode(&session)
+
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message":   "Specified session not found or not available",
+				"available": false,
+			})
+			return
+		}
+	} else {
+
+		err = utils.SessionColl.FindOne(ctx, bson.M{
+			"mode":   "system",
+			"status": "active",
+		}).Decode(&session)
+
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message":   "No system sessions available to take over",
+				"available": false,
+			})
+			return
+		}
 	}
 
-	_, err = utils.SessionColl.UpdateOne(ctx,
+	updateResult, err := utils.SessionColl.UpdateOne(ctx,
 		bson.M{"_id": session.ID},
 		bson.M{"$set": bson.M{
 			"assignedAgent": body.AgentID,
@@ -245,8 +272,18 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 		}},
 	)
 	if err != nil {
+		log.Printf("[TAKEOVER][ERROR] Failed to update session: %v", err)
 		http.Error(w, "Failed to transfer session", http.StatusInternalServerError)
 		return
+	}
+	log.Printf("[TAKEOVER][SUCCESS] Session updated - matched: %d, modified: %d", updateResult.MatchedCount, updateResult.ModifiedCount)
+
+	var updatedSession models.Session
+	err = utils.SessionColl.FindOne(ctx, bson.M{"_id": session.ID}).Decode(&updatedSession)
+	if err != nil {
+		log.Printf("[TAKEOVER][ERROR] Failed to verify session update: %v", err)
+	} else {
+		log.Printf("[TAKEOVER][VERIFY] Session mode is now: %s, agent: %s", updatedSession.Mode, updatedSession.AssignedAgent)
 	}
 
 	_, err = utils.AgentColl.UpdateOne(ctx,
@@ -257,12 +294,101 @@ func TakeOverAISessionHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[TAKEOVER][ERROR] Agent status 'busy' yapılamadı: %v\n", err)
 	}
 
+	sessionUpdate := map[string]interface{}{
+		"sessionId":     session.ID.Hex(),
+		"userId":        session.UserID,
+		"assignedAgent": body.AgentID,
+		"mode":          "human",
+		"status":        "active",
+		"lastActivity":  time.Now(),
+		"action":        "takeover",
+	}
+	websocket.BroadcastSessionUpdate(sessionUpdate)
+
+	userConn := websocket.GetUserConn(session.UserID)
+	if userConn != nil {
+		userNotification := map[string]interface{}{
+			"sender":        "system",
+			"mode":          "human",
+			"status":        "active",
+			"assignedAgent": body.AgentID,
+		}
+		jsonData, _ := json.Marshal(userNotification)
+		userConn.WriteMessage(gorillaws.TextMessage, jsonData)
+		log.Printf("[TAKEOVER] Notified user %s about agent takeover", session.UserID)
+	}
+
+	agentConn := websocket.GetAgentConn(body.AgentID)
+	if agentConn != nil {
+		messageCursor, err := utils.MessageColl.Find(ctx, bson.M{"sessionId": session.ID})
+		if err == nil {
+			defer messageCursor.Close(ctx)
+			for messageCursor.Next(ctx) {
+				var msg models.Message
+				if err := messageCursor.Decode(&msg); err == nil {
+					out := map[string]interface{}{
+						"sender":  msg.Sender,
+						"message": msg.Text,
+						"type":    "history",
+					}
+					jsonData, _ := json.Marshal(out)
+					agentConn.WriteMessage(gorillaws.TextMessage, jsonData)
+				}
+			}
+			log.Printf("[WS] Sent message history to agent %s for session %s", body.AgentID, session.ID.Hex())
+		}
+	}
+
+	var messages []models.Message
+	messageCursor, err := utils.MessageColl.Find(ctx, bson.M{"sessionId": session.ID})
+	if err == nil {
+		defer messageCursor.Close(ctx)
+		for messageCursor.Next(ctx) {
+			var msg models.Message
+			if err := messageCursor.Decode(&msg); err == nil {
+				messages = append(messages, msg)
+			}
+		}
+	}
+
+	for i := 0; i < len(messages)-1; i++ {
+		for j := i + 1; j < len(messages); j++ {
+			if messages[i].Timestamp.After(messages[j].Timestamp) {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
+		}
+	}
+
+	var user struct {
+		ID    primitive.ObjectID `bson:"_id,omitempty"`
+		Name  string             `bson:"name"`
+		Email string             `bson:"email"`
+	}
+
+	utils.MongoDB.Collection("users").FindOne(ctx, bson.M{"email": session.UserID}).Decode(&user)
+
+	var formattedMessages []map[string]interface{}
+	for _, msg := range messages {
+		formattedMessages = append(formattedMessages, map[string]interface{}{
+			"id":        msg.ID.Hex(),
+			"sessionId": msg.SessionID.Hex(),
+			"sender":    msg.Sender,
+			"text":      msg.Text,
+			"timestamp": msg.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   "Successfully took over system session",
 		"sessionId": session.ID.Hex(),
 		"agentId":   body.AgentID,
 		"available": true,
+		"messages":  formattedMessages,
+		"userInfo": map[string]interface{}{
+			"name":  user.Name,
+			"email": user.Email,
+		},
 	})
 }
 
@@ -339,12 +465,70 @@ func AssignSessionToAgentHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ASSIGN][ERROR] Agent status 'busy' yapılamadı: %v\n", err)
 	}
 
+	var messages []models.Message
+	messageCursor, err := utils.MessageColl.Find(ctx, bson.M{"sessionId": sessionObjId})
+	if err == nil {
+		defer messageCursor.Close(ctx)
+		for messageCursor.Next(ctx) {
+			var msg models.Message
+			if err := messageCursor.Decode(&msg); err == nil {
+				messages = append(messages, msg)
+			}
+		}
+	}
+
+	for i := 0; i < len(messages)-1; i++ {
+		for j := i + 1; j < len(messages); j++ {
+			if messages[i].Timestamp.After(messages[j].Timestamp) {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
+		}
+	}
+
+	var user struct {
+		ID    primitive.ObjectID `bson:"_id,omitempty"`
+		Name  string             `bson:"name"`
+		Email string             `bson:"email"`
+	}
+
+	utils.MongoDB.Collection("users").FindOne(ctx, bson.M{"email": session.UserID}).Decode(&user)
+
+	agentConn := websocket.GetAgentConn(body.AgentID)
+	if agentConn != nil {
+		for _, msg := range messages {
+			out := map[string]interface{}{
+				"sender":  msg.Sender,
+				"message": msg.Text,
+				"type":    "history",
+			}
+			jsonData, _ := json.Marshal(out)
+			agentConn.WriteMessage(gorillaws.TextMessage, jsonData)
+		}
+		log.Printf("[WS] Sent message history to agent %s for session %s", body.AgentID, body.SessionID)
+	}
+
+	var formattedMessages []map[string]interface{}
+	for _, msg := range messages {
+		formattedMessages = append(formattedMessages, map[string]interface{}{
+			"id":        msg.ID.Hex(),
+			"sessionId": msg.SessionID.Hex(),
+			"sender":    msg.Sender,
+			"text":      msg.Text,
+			"timestamp": msg.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   "Successfully assigned session to agent",
 		"sessionId": body.SessionID,
 		"agentId":   body.AgentID,
 		"success":   true,
+		"messages":  formattedMessages,
+		"userInfo": map[string]interface{}{
+			"name":  user.Name,
+			"email": user.Email,
+		},
 	})
 }
 
@@ -384,15 +568,40 @@ func GetAgentActiveSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	for cursor.Next(ctx) {
 		var s models.Session
 		if err := cursor.Decode(&s); err == nil {
-			sessions = append(sessions, map[string]interface{}{
+
+			var user struct {
+				ID    primitive.ObjectID `bson:"_id,omitempty"`
+				Name  string             `bson:"name"`
+				Email string             `bson:"email"`
+			}
+			log.Printf("[AGENT] Looking up user with email: %s", s.UserID)
+
+			err = utils.MongoDB.Collection("users").FindOne(ctx, bson.M{"email": s.UserID}).Decode(&user)
+			if err != nil {
+				log.Printf("[AGENT][ERROR] Failed to find user by email: %s, error: %v", s.UserID, err)
+			} else {
+				log.Printf("[AGENT][SUCCESS] Found user: %s (%s)", user.Name, user.Email)
+			}
+
+			sessionData := map[string]interface{}{
 				"sessionId":    s.ID.Hex(),
 				"userId":       s.UserID,
 				"mode":         s.Mode,
 				"status":       s.Status,
 				"createdAt":    s.CreatedAt,
 				"lastActivity": s.LastActivity,
-			})
-			log.Printf("[AGENT] Found session: %s for user: %s, mode: %s", s.ID.Hex(), s.UserID, s.Mode)
+			}
+
+			if err == nil {
+				sessionData["userName"] = user.Name
+				sessionData["userEmail"] = user.Email
+			} else {
+				sessionData["userName"] = "Bilinmeyen Kullanıcı"
+				sessionData["userEmail"] = "N/A"
+			}
+
+			sessions = append(sessions, sessionData)
+			log.Printf("[AGENT] Found session: %s for user: %s (%s), mode: %s", s.ID.Hex(), user.Name, s.UserID, s.Mode)
 		}
 	}
 
@@ -428,12 +637,37 @@ func GetAISessionsHandler(w http.ResponseWriter, r *http.Request) {
 	for cursor.Next(ctx) {
 		var s models.Session
 		if err := cursor.Decode(&s); err == nil {
-			sessions = append(sessions, map[string]interface{}{
+
+			var user struct {
+				ID    primitive.ObjectID `bson:"_id,omitempty"`
+				Name  string             `bson:"name"`
+				Email string             `bson:"email"`
+			}
+			log.Printf("[AI] Looking up user with email: %s", s.UserID)
+
+			err = utils.MongoDB.Collection("users").FindOne(ctx, bson.M{"email": s.UserID}).Decode(&user)
+			if err != nil {
+				log.Printf("[AI][ERROR] Failed to find user by email: %s, error: %v", s.UserID, err)
+			} else {
+				log.Printf("[AI][SUCCESS] Found user: %s (%s)", user.Name, user.Email)
+			}
+
+			sessionData := map[string]interface{}{
 				"sessionId":    s.ID.Hex(),
 				"userId":       s.UserID,
 				"createdAt":    s.CreatedAt,
 				"lastActivity": s.LastActivity,
-			})
+			}
+
+			if err == nil {
+				sessionData["userName"] = user.Name
+				sessionData["userEmail"] = user.Email
+			} else {
+				sessionData["userName"] = "Bilinmeyen Kullanıcı"
+				sessionData["userEmail"] = "N/A"
+			}
+
+			sessions = append(sessions, sessionData)
 		}
 	}
 

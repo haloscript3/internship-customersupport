@@ -83,7 +83,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	history = append(history, ChatMessage{
-		Sender:    "ai",
+		Sender:    "system",
 		Text:      aiReply,
 		Timestamp: time.Now(),
 	})

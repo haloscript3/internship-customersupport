@@ -74,32 +74,93 @@ frontend/
 
 ##  Prerequisites
 
-- Go 1.19 or higher
-- Node.js 16+ and npm
-- MongoDB instance (local or cloud)
-- Google Gemini API key
+- **Go**: 1.24.3 or higher
+- **Node.js**: 18.0.0 or higher
+- **npm**: 8.0.0 or higher
+- **MongoDB**: 4.4 or higher (local or cloud)
+- **Google Gemini API**: Active API key
+
+> 📋 **Detailed Requirements**: See [REQUIREMENTS.md](./REQUIREMENTS.md) for complete system requirements, dependencies, and installation instructions.
 
 ##  Installation & Setup
 
-### 1. Environment Variables
-Create a `.env` file in the backend directory:
-```env
-MONGO_URI=YOUR_MONGODB_CLUSTER_KEY
-GEMINI_API_KEY=your_gemini_api_key_here
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/customer-service-chatbot.git
+cd customer-service-chatbot
 ```
 
-### 2. Backend Setup
+### 2. Environment Variables
+Copy the example environment file and configure it:
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your actual values:
+```env
+# MongoDB Configuration
+MONGO_URI=mongodb://localhost:27017/ChatbotAI
+
+# Gemini AI Configuration
+GEMINI_API_KEY=your_actual_gemini_api_key_here
+
+# Server Configuration
+PORT=8080
+
+# Optional: Environment
+NODE_ENV=development
+```
+
+**Important**: Never commit your actual `.env` file to version control!
+
+### 3. Backend Setup
 ```bash
 cd backend
-go mod init backend
-go get go.mongodb.org/mongo-driver/mongo
-go get github.com/gorilla/websocket
-go get github.com/gorilla/mux
-go get golang.org/x/crypto/bcrypt
-go run main.go
+go mod tidy
+go build -o backend .
+./backend
 ```
 
-### 3. Frontend Setup
+The backend will start on `http://localhost:8080`
+
+### 4. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will start on `http://localhost:3000`
+
+### 5. Optional: MongoDB with Docker
+If you don't have MongoDB installed locally, you can use Docker:
+
+```bash
+# Start MongoDB and Mongo Express
+docker-compose up -d
+
+# MongoDB will be available at: mongodb://localhost:27017
+# Mongo Express (web interface) at: http://localhost:8081
+# Username: admin, Password: admin123
+
+# Stop services
+docker-compose down
+```
+
+##  Getting Started
+
+### For Users (Customers)
+1. Open `http://localhost:3000/user/register` to create an account
+2. Login at `http://localhost:3000/user/login`
+3. Start chatting - you'll be automatically connected to AI or human agent
+
+### For Agents
+1. Open `http://localhost:3000/agent/register` to create an agent account
+2. Login at `http://localhost:3000/agent/login`
+3. Set your status to "Available" to receive customer sessions
+4. View and manage sessions at `http://localhost:3000/agent/sessions`
+
+##  API Endpoints
 ```bash
 cd frontend
 npm install react react-dom
@@ -227,6 +288,39 @@ type Agent struct {
 - Load balancing for WebSocket connections
 - Redis for session management in distributed systems
 
+##  Troubleshooting
+
+### Common Issues
+
+**Backend won't start:**
+- Check if MongoDB is running: `mongod --version`
+- Verify your `.env` file exists and has correct values
+- Ensure port 8080 is not in use: `lsof -i :8080`
+
+**Frontend won't connect to backend:**
+- Verify backend is running on `http://localhost:8080`
+- Check browser console for CORS errors
+- Ensure WebSocket connections are allowed
+
+**MongoDB connection issues:**
+- Install MongoDB if not installed: `brew install mongodb-community` (macOS)
+- Start MongoDB service: `brew services start mongodb-community`
+- Check MongoDB logs: `tail -f /usr/local/var/log/mongodb/mongo.log`
+
+**Gemini API errors:**
+- Verify your API key is correct in `.env`
+- Check Gemini API quota and billing status
+- Test API key: `curl -H "Authorization: Bearer YOUR_API_KEY" https://generativelanguage.googleapis.com/v1beta/models`
+
+### Environment Variables Reference
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `MONGO_URI` | MongoDB connection string | Yes | `mongodb://localhost:27017/ChatbotAI` |
+| `GEMINI_API_KEY` | Google Gemini API key | Yes | - |
+| `PORT` | Backend server port | No | `8080` |
+| `NODE_ENV` | Environment mode | No | `development` |
+
 ##  Contributing
 
 1. Fork the repository
@@ -239,5 +333,18 @@ type Agent struct {
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+##  Support
+
+If you encounter any issues:
+1. Check the troubleshooting section above
+2. Check the [REQUIREMENTS.md](./REQUIREMENTS.md) for system requirements
+3. Search existing GitHub issues
+4. Create a new issue with detailed error information
+
+##  Documentation
+
+- [REQUIREMENTS.md](./REQUIREMENTS.md) - Complete system requirements and dependencies
+- [API Documentation](#api-endpoints) - Backend API endpoints
+- [WebSocket Protocol](#websocket-protocol) - Real-time communication protocol
 
 **Note**: This application provides a complete customer support solution combining the efficiency of AI with the personal touch of human agents, ensuring customers always receive timely and appropriate assistance.

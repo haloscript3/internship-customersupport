@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"backend/models"
 	"backend/utils"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
-	"backend/models"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -53,7 +54,7 @@ func SendHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	botMsg := ChatEntry{
-		Sender:    "ai",
+		Sender:    "system",
 		Text:      botReply,
 		Timestamp: time.Now(),
 	}
@@ -86,8 +87,8 @@ func SessionMessageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload struct {
 		SessionID string `json:"sessionId"`
-		Sender   string `json:"sender"`
-		Text     string `json:"text"`
+		Sender    string `json:"sender"`
+		Text      string `json:"text"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.SessionID == "" || payload.Sender == "" || payload.Text == "" {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -131,7 +132,7 @@ func SessionMessagesGetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid sessionId", http.StatusBadRequest)
 		return
 	}
-	filter := map[string]interface{}{ "sessionId": sessionObjID }
+	filter := map[string]interface{}{"sessionId": sessionObjID}
 	cur, err := utils.MessageColl.Find(context.Background(), filter)
 	if err != nil {
 		http.Error(w, "Failed to fetch messages", http.StatusInternalServerError)
@@ -145,6 +146,28 @@ func SessionMessagesGetHandler(w http.ResponseWriter, r *http.Request) {
 			messages = append(messages, msg)
 		}
 	}
+
+	for i := 0; i < len(messages)-1; i++ {
+		for j := i + 1; j < len(messages); j++ {
+			if messages[i].Timestamp.After(messages[j].Timestamp) {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
+		}
+	}
+
+	var formattedMessages []map[string]interface{}
+	for _, msg := range messages {
+		formattedMessages = append(formattedMessages, map[string]interface{}{
+			"id":        msg.ID.Hex(),
+			"sessionId": msg.SessionID.Hex(),
+			"sender":    msg.Sender,
+			"text":      msg.Text,
+			"timestamp": msg.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(messages)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"messages": formattedMessages,
+	})
 }

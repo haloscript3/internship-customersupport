@@ -159,30 +159,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				utils.AgentColl.UpdateOne(ctx, bson.M{"_id": agentObjId}, bson.M{"$set": bson.M{"status": "available"}})
 			}
 
-			utils.SessionColl.UpdateMany(ctx, bson.M{"assignedAgent": agentID, "mode": "human"}, bson.M{"$set": bson.M{
-				"mode":          "system",
-				"assignedAgent": "System",
-				"status":        "active",
-			}})
-
-			sessions, _ := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": "System", "mode": "system"})
-			for sessions.Next(ctx) {
-				var s models.Session
-				if err := sessions.Decode(&s); err == nil {
-					userConn := GetUserConn(s.UserID)
-					if userConn != nil {
-						out := map[string]interface{}{
-							"sender":        "system",
-							"mode":          "system",
-							"status":        "active",
-							"assignedAgent": "System",
-						}
-						jsonData, _ := json.Marshal(out)
-						userConn.WriteMessage(websocket.TextMessage, jsonData)
-						log.Printf("[WS] Notified user %s about system mode", s.UserID)
-					}
-				}
-			}
+			log.Printf("[WS] Agent %s disconnected - keeping sessions in human mode", agentID)
 		}
 		conn.Close()
 	}()
@@ -337,4 +314,84 @@ func NotifySessionEnded(sessionID string) {
 		userConn.WriteMessage(websocket.TextMessage, jsonData)
 		log.Printf("[WS] Notified user %s about session end", session.UserID)
 	}
+}
+
+func BroadcastNewSession(sessionData map[string]interface{}) {
+	message := map[string]interface{}{
+		"type":    "new_session",
+		"payload": sessionData,
+	}
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[WS] Failed to marshal new session: %v", err)
+		return
+	}
+
+	count := 0
+	for agentID, conn := range agentConns {
+		if conn != nil {
+			err := conn.WriteMessage(websocket.TextMessage, jsonData)
+			if err != nil {
+				log.Printf("[WS] Failed to send new session to agent %s: %v", agentID, err)
+				delete(agentConns, agentID)
+			} else {
+				count++
+			}
+		}
+	}
+	log.Printf("[WS] Broadcasted new session to %d agents", count)
+}
+
+func BroadcastSessionUpdate(sessionUpdate map[string]interface{}) {
+	message := map[string]interface{}{
+		"type":    "session_update",
+		"payload": sessionUpdate,
+	}
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[WS] Failed to marshal session update: %v", err)
+		return
+	}
+
+	count := 0
+	for agentID, conn := range agentConns {
+		if conn != nil {
+			err := conn.WriteMessage(websocket.TextMessage, jsonData)
+			if err != nil {
+				log.Printf("[WS] Failed to send session update to agent %s: %v", agentID, err)
+				delete(agentConns, agentID)
+			} else {
+				count++
+			}
+		}
+	}
+	log.Printf("[WS] Broadcasted session update to %d agents", count)
+}
+
+func BroadcastSessionEnd(sessionID string) {
+	message := map[string]interface{}{
+		"type": "session_end",
+		"payload": map[string]interface{}{
+			"sessionId": sessionID,
+		},
+	}
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[WS] Failed to marshal session end: %v", err)
+		return
+	}
+
+	count := 0
+	for agentID, conn := range agentConns {
+		if conn != nil {
+			err := conn.WriteMessage(websocket.TextMessage, jsonData)
+			if err != nil {
+				log.Printf("[WS] Failed to send session end to agent %s: %v", agentID, err)
+				delete(agentConns, agentID)
+			} else {
+				count++
+			}
+		}
+	}
+	log.Printf("[WS] Broadcasted session end to %d agents", count)
 }

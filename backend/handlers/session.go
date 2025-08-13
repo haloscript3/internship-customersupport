@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/gorilla/mux"
+	gorillaws "github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -212,6 +213,17 @@ func StartSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session.ID = res.InsertedID.(primitive.ObjectID)
+	sessionData := map[string]interface{}{
+		"sessionId":     session.ID.Hex(),
+		"userId":        session.UserID,
+		"assignedAgent": session.AssignedAgent,
+		"mode":          session.Mode,
+		"status":        session.Status,
+		"lastActivity":  session.LastActivity,
+	}
+	websocket.BroadcastNewSession(sessionData)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"sessionId":     res.InsertedID.(primitive.ObjectID).Hex(),
@@ -287,11 +299,52 @@ func TransferToAgentHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[TRANSFER][ERROR] Agent status 'busy' yapılamadı: %v\n", err)
 	}
 
+	var sessionData models.Session
+	utils.SessionColl.FindOne(ctx, bson.M{"_id": sessionObjId}).Decode(&sessionData)
+
+	userConn := websocket.GetUserConn(sessionData.UserID)
+	if userConn != nil {
+		userNotification := map[string]interface{}{
+			"sender":        "system",
+			"mode":          "human",
+			"status":        "active",
+			"assignedAgent": body.AgentID,
+		}
+		jsonData, _ := json.Marshal(userNotification)
+		userConn.WriteMessage(gorillaws.TextMessage, jsonData)
+		fmt.Printf("[TRANSFER] Notified user %s about agent assignment", sessionData.UserID)
+	}
+
+	var messages []models.Message
+	messageCursor, err := utils.MessageColl.Find(ctx, bson.M{"sessionId": sessionObjId})
+	if err == nil {
+		defer messageCursor.Close(ctx)
+		for messageCursor.Next(ctx) {
+			var msg models.Message
+			if err := messageCursor.Decode(&msg); err == nil {
+				messages = append(messages, msg)
+			}
+		}
+	}
+
+	var user struct {
+		ID    primitive.ObjectID `bson:"_id,omitempty"`
+		Name  string             `bson:"name"`
+		Email string             `bson:"email"`
+	}
+
+	utils.MongoDB.Collection("users").FindOne(ctx, bson.M{"email": sessionData.UserID}).Decode(&user)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   "Session successfully transferred to agent",
 		"sessionId": body.SessionID,
 		"agentId":   body.AgentID,
+		"messages":  messages,
+		"userInfo": map[string]interface{}{
+			"name":  user.Name,
+			"email": user.Email,
+		},
 	})
 }
 
@@ -307,23 +360,42 @@ func GetAgentSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	agentId := vars["agentId"]
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cursor, err := utils.SessionColl.Find(ctx, bson.M{"assignedAgent": agentId})
+
+	cursor, err := utils.SessionColl.Find(ctx, bson.M{
+		"assignedAgent": agentId,
+		"mode":          "human",
+	})
 	if err != nil {
 		http.Error(w, "Failed to fetch sessions", http.StatusInternalServerError)
 		return
 	}
 	defer cursor.Close(ctx)
+
 	sessions := []map[string]interface{}{}
 	for cursor.Next(ctx) {
 		var s models.Session
 		if err := cursor.Decode(&s); err == nil {
 			sessions = append(sessions, map[string]interface{}{
-				"sessionId": s.ID.Hex(),
-				"userId":    s.UserID,
-				"createdAt": s.CreatedAt,
+				"sessionId":    s.ID.Hex(),
+				"userId":       s.UserID,
+				"mode":         s.Mode,
+				"status":       s.Status,
+				"createdAt":    s.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				"lastActivity": s.LastActivity.Format("2006-01-02T15:04:05Z07:00"),
 			})
 		}
 	}
+
+	for i := 0; i < len(sessions)-1; i++ {
+		for j := i + 1; j < len(sessions); j++ {
+			timeIStr := sessions[i]["lastActivity"].(string)
+			timeJStr := sessions[j]["lastActivity"].(string)
+			if timeIStr < timeJStr {
+				sessions[i], sessions[j] = sessions[j], sessions[i]
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})
 }
@@ -419,6 +491,8 @@ func EndSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	websocket.NotifySessionEnded(body.SessionID)
+
+	websocket.BroadcastSessionEnd(body.SessionID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{

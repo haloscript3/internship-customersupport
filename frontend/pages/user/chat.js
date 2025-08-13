@@ -59,12 +59,30 @@ export default function UserChat() {
       if (msg.sender === 'system' && (msg.mode || msg.status || msg.assignedAgent)) {
         if (msg.mode) {
           setMode(msg.mode);
+      
+          if (msg.mode === 'human' && msg.assignedAgent) {
+            console.log('Agent took over session');
+        
+          }
         }
         if (msg.status) {
           setSessionStatus(msg.status);
+      
+          if (msg.status === 'completed') {
+            console.log('Session completed, redirecting to messages page');
+            window.location.href = '/user/messages';
+            return;
+          }
         }
         if (msg.assignedAgent) {
           setAssignedAgent(msg.assignedAgent);
+        }
+        if (msg.mode) {
+          setMode(msg.mode);
+          if (msg.mode === 'human' && msg.assignedAgent) {
+            console.log('Agent took over session:', msg.assignedAgent);
+        
+          }
         }
         return;
       }

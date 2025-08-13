@@ -27,40 +27,8 @@ export default function UserLogin() {
       const data = await res.json();
       if (res.ok) {
         const userId = form.email;
-        const agentId = localStorage.getItem('agentId');
-        let sessionId = null;
-        if (agentId) {
-          const sessionRes = await fetch('http://localhost:8080/api/session/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, agentId }),
-          });
-          const sessionData = await sessionRes.json();
-          if (sessionRes.ok && sessionData.sessionId) {
-            sessionId = sessionData.sessionId;
-          } else {
-            alert('Session başlatılamadı.');
-            setLoading(false);
-            return;
-          }
-        } else {
-          const sessionRes = await fetch('http://localhost:8080/api/session/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId }),
-          });
-          const sessionData = await sessionRes.json();
-          if (sessionRes.ok && sessionData.sessionId) {
-            sessionId = sessionData.sessionId;
-          } else {
-            alert('Session başlatılamadı.');
-            setLoading(false);
-            return;
-          }
-        }
-        localStorage.setItem('sessionId', sessionId);
         localStorage.setItem('userId', userId);
-        window.location.href = '/user/chat';
+        window.location.href = '/user/messages';
       } else {
         alert(data.error || 'Hatalı giriş.');
       }
