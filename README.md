@@ -86,8 +86,8 @@ frontend/
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/customer-service-chatbot.git
-cd customer-service-chatbot
+git clone https://github.com/haloscript3/internship-customersupport.git
+cd internship-customersupport
 ```
 
 ### 2. Environment Variables
